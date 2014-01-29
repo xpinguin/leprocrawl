@@ -183,3 +183,16 @@ CREATE TABLE IF NOT EXISTS 'glagne_vote_data' (
 	candidate_nickname TEXT
 );
 
+--
+-- Greetings
+--
+CREATE TABLE IF NOT EXISTS 'greeting' (
+	id INTEGER PRIMARY KEY,
+	content TEXT UNIQUE,
+	first_observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+	last_observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+	times_occured INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS _idx_greeting_id ON greeting (id);
+CREATE INDEX IF NOT EXISTS _idx_greeting_content ON greeting (content);
+

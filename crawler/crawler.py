@@ -8,7 +8,7 @@ from urllib import urlencode
 from httplib import HTTPConnection
 import zlib
 from time import sleep, time
-from datetime import datetime
+from datetime import datetime, timedelta
 from multiprocessing import Process, Queue, Pipe, Lock
 from threading import Thread, Lock as ThLock
 from Queue import Empty as QueueEmptyException
@@ -16,6 +16,7 @@ from Queue import Full as QueueFullException
 import random
 from itertools import chain, repeat
 import codecs
+from functools import partial
 
 from config import *
 from defs import *
@@ -84,14 +85,20 @@ class MyHTTPConnection(HTTPConnection):
 			self.__http_req_headers["Cookie"] = _cookie_f.read().strip("\r\n")
 			
 		self.__lock = Lock()
-		self.__last_request_time = datetime.fromordinal(1)
+		self.__last_request_time = 0
 	
 	def request(self, method, uri, data, **kwargs):
 		# ----------------------------------------------
 		def _normalized_sleep(s):
 			if (s <= 0): return 0
 			sleep(s)
-			return s  
+			return s
+		
+		def _print_stats(time_slept, time_response):
+			print_safe(">>> [%.3f|%.3f] %s %s %s %s" % (time_slept, time_response, method, 
+													self.__http_req_headers["Host"], 
+													uri, data)
+			)
 		# ----------------------------------------------
 		
 		self.__lock.acquire()
@@ -106,15 +113,11 @@ class MyHTTPConnection(HTTPConnection):
 		while (True):
 			_time_slept = _normalized_sleep(
 						HTTP_REQUEST_DELAY -
-						(datetime.now() - self.__last_request_time).total_seconds()
-			)
-			print_safe(">>> [%.3f] %s %s %s %s" % (_time_slept, method, 
-													self.__http_req_headers["Host"], 
-													uri, data)
+						(time() - self.__last_request_time)
 			)
 			
 			HTTPConnection.request(self, method, uri, data, self.__http_req_headers)
-			self.__last_request_time = datetime.now()
+			self.__last_request_time = time()
 			
 			try:
 				resp = self.getresponse()
@@ -124,6 +127,8 @@ class MyHTTPConnection(HTTPConnection):
 				self.close()
 				self.connect()
 				continue
+			finally:
+				_print_stats(_time_slept, time() - self.__last_request_time)
 			
 			try:
 				res = zlib.decompress(resp.read(), 16 + zlib.MAX_WBITS)
@@ -420,18 +425,53 @@ def crawl_lepra_live(http_conn, post_queue):
 	return token
 
 def monitor_elections(http_conn, storage_queue):
-	cand_votes = parse_glagne_elections(http_conn.request(
-				"POST",
-				"/floridactl/",
-				"token=1"# + "&rows[]=10"*5
-	))
+	"""
+		- wait til Wednesday
+		- monitor voting activity
+	"""
 	
-	print(len(reduce(lambda res, _v: res + _v, cand_votes.values(), [])))
-	print
-	print(cand_votes["CCCP"])
-	
-	for vd in sorted(cand_votes["Nurmamed"], key = lambda _v: _v[1]):
-		print("'%s' at '%s'" % (vd[0], vd[1]))
+	while (True):
+		# -----
+		token = 1
+		while (datetime.now().weekday() == 2):
+			votes_all, token = parse_glagne_elections(http_conn.request(
+						"POST",
+						"/floridactl/",
+						"token=%u" % token
+			))
+			
+			votes_with_date = parse_glagne_elections(http_conn.request(
+						"POST",
+						"/floridactl/",
+						"token=0" + "&rows[]=100"*5
+			))[0]
+			
+			observed_date = time()
+			
+			for _v_id, _v_spec in votes_all.iteritems():
+				print(_v_id, _v_spec)
+			print("-"*40)
+			for _v_id, _v_spec in votes_with_date.iteritems():
+				print(_v_id, _v_spec)
+			print("="*40 + "\n\n")
+				
+
+		# -----
+				
+		# sleep until next wednesday
+		days_to_wed = (2 - datetime.now().weekday()) % 7
+		
+		sleep(
+			int(
+				(timedelta(days = days_to_wed) + datetime.now()).replace(
+														hour = 0,
+														minute = 0,
+														second = 0,
+														microsecond = 0
+				).strftime("%s")
+			) - time()
+		)
+		# -----
 
 #------------------------------------------------------------------------------ 
 # 	TEST CODE
@@ -512,9 +552,14 @@ def storage_worker(storage_queue):
 				_user_name = args[0]
 			elif (args[0].has_key("nickname")):
 				_user_name = args[0].nickname
+			elif (args[0].has_key("uid")):
+				_user_name = str(args[0].uid)
 			
 			print_safe("<storage> %s('%s')" % (method_name, _user_name))
-		
+			
+		elif (method_name == "store_greeting"):
+			print_safe(u"<storage> %s('%s')" % (method_name, args[0]))
+			
 		elif (isinstance(args[0], dict)) and (args[0].has_key("id")):
 			print_safe("<storage> %s('%u')" % (method_name, args[0]["id"]))
 			
@@ -530,13 +575,14 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 		NOTE: non-uniform (like with comments)
 				probability of transition from any user to any user (except for self-transition, which is 0)
 			
-			P(user, user_occur_freq) = user_occur_freq / sum({user_occur_freq(user) | any user})
+			P(user) = user_occur_freq(user) / sum({user_occur_freq(user) | ANY user})
 	"""
 	
 	# try to load observed users' nicknames from DB
 	p_stor = PassiveStorage(RAW_DB_PATH)
 	_users_observed_set = p_stor.get_known_users()
 	p_stor.close()
+	del p_stor
 	
 	print("\n{INFO} Users precached: %u\n" % len(_users_observed_set))
 	# ----
@@ -546,6 +592,8 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 	users_new = set()
 	_total_users_freq = [0]
 	_lock = ThLock()
+	
+	del _users_observed_set
 	
 	# -----------------------------------------------------
 	def _receive_users():
@@ -604,7 +652,7 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 			sleep(1)
 			continue
 		# --------------------
-			
+		
 		try:
 			user_data = retrieve_user_info(http_conn, _rand_user)
 		except Exception as e:
@@ -634,6 +682,14 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 			if (isinstance(user_data.children_nicknames, (tuple, list, set))):
 				for _child_u in user_data.children_nicknames:
 					user_queue.put(_child_u, block = False)
+					
+			if (isinstance(user_data.karma, dict)):
+				for _judgement in user_data.karma.itervalues():
+					try:
+						user_queue.put(_judgement[1], block = False)
+					except IndexError:
+						pass
+					
 		except QueueFullException:
 			pass
 		
@@ -663,7 +719,6 @@ def user_favs_handle_worker(storage_queue, userfav_queue):
 		# ------------------------------
 		
 		for _u_nickname, _u_id in current_users:
-			
 			try:
 				user_favs = retrieve_user_favorites(http_conn, _u_nickname)
 			except Exception as e:
@@ -691,13 +746,14 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 		NOTE: non-uniform (like with comments)
 				probability of transition from any post to any post (except for self-transition, which is 0)
 			
-			P(post_id, post_occur_freq) = post_occur_freq / sum({post_occur_freq(post_id) | any post_id})
+			P(post_id) = post_occur_freq(post_id) / sum({post_occur_freq(post_id) | ANY post_id})
 	"""
 	
 	# try to load observed posts from DB
 	p_stor = PassiveStorage(RAW_DB_PATH)
 	_posts_observed_set = p_stor.get_known_posts()
 	p_stor.close()
+	del p_stor
 	
 	print("\n{INFO} Posts precached: %u\n" % len(_posts_observed_set))
 	# ----
@@ -710,6 +766,8 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 	
 	_total_posts_freq = [0]
 	_lock = ThLock()
+	
+	del _posts_observed_set
 	
 	# -----------------------------------------------------
 	def _receive_posts():
@@ -830,7 +888,10 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 		
 		if (isinstance(post_data.rating, dict)):
 			for _rate in post_data.rating.itervalues():
-				user_queue.put(_rate[1], block = True, timeout = None)
+				try:
+					user_queue.put(_rate[1], block = True, timeout = None)
+				except IndexError:
+					pass
 	
 		for _comment in post_data.comments:
 			user_queue.put(_comment.author_nickname, block = True, timeout = None)
@@ -843,12 +904,12 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 			
 def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 	"""
-		random walk over known comment_ids is employed
+		random walk (uniform) over known comment_ids is employed
 		
 		== pros ==
 			1. uniform cover density (broader coverage)
 			2. no queue stalls (compare to classic sequential walk)
-		== cons ===
+		== cons ==
 			??? 
 	"""
 	
@@ -856,6 +917,7 @@ def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 	p_stor = PassiveStorage(RAW_DB_PATH)
 	comments_observed = p_stor.get_known_comments()
 	p_stor.close()
+	del p_stor
 	
 	print("\n{INFO} Comments precached: %u\n" % len(comments_observed))
 	# ----
@@ -921,19 +983,38 @@ def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 			
 			if (isinstance(comm_rating, dict)):
 				for _rate in comm_rating.itervalues():
-					user_queue.put(_rate[1], block = True, timeout = None)
+					try:
+						user_queue.put(_rate[1], block = True, timeout = None)
+					except IndexError:
+						pass
 	
 	recv_thread.join()
 # --------------------------------------------------------------------------------------		
 
+def __greeting_callback(storage_queue, greeting):
+	"""
+		(see parsers.py)
+	"""
+	
+	try:
+		storage_queue.put(
+				("store_greeting", (greeting,), {"observed_date" : time()}),
+				block = False
+		)
+	except QueueFullException:
+		print(u"\n{ERR} storage_queue is full; greeting '%s' skipped\n" % greeting)
+
+
 #===============================================================================
-# MAIN LOOP
+# MAIN LOGIC
 #===============================================================================
 storage_queue = Queue()
 user_queue = Queue()
 userfav_queue = Queue()
 post_queue = Queue()
 comm_rating_queue = Queue()
+
+greeting_callback = partial(__greeting_callback, storage_queue)
 
 _processes = [
 		Process(target = storage_worker, args = (storage_queue,)),
@@ -952,13 +1033,28 @@ for _proc in _processes:
 
 glagne_http_conn = MyHTTPConnection("leprosorium.ru")
 
-_crawl_threads = [
-		Thread(target = crawl_lepra_live, args = (glagne_http_conn, post_queue)),
-		Thread(target = crawl_sublepra, args = (glagne_http_conn, "baraholka", post_queue))
-]
+#pd = retrieve_post(glagne_http_conn, 1664677, "")
+#sys.exit(1)
+
+_crawl_threads = []
+
+# run crawlers according to config
+if (cfg_params["lepra_live"]):
+	_crawl_threads.append(
+			Thread(target = crawl_lepra_live, args = (glagne_http_conn, post_queue)),
+	)
+	
+if (cfg_params["elections"]):
+	_crawl_threads.append(
+			Thread(target = monitor_elections, args = (glagne_http_conn, storage_queue)),
+	)
 
 for _th in _crawl_threads:
 	_th.start()
 	
 for _th in _crawl_threads:
 	_th.join()
+# -----
+
+if (cfg_params["never_halt"]):
+	while (True): sleep(10000)

@@ -1,20 +1,34 @@
 # -*- coding: utf-8 -*-
 
+import sys
 from bs4 import BeautifulSoup
 import json
 from datetime import datetime
 import re
 
 from defs import *
+from config import *
 
 #===============================================================================
 # GLOBALS
 #===============================================================================
+def __greeting_handle_wrap(func):
+	if (not cfg_params["collect_greetings"]):
+		return lambda *args, **kwargs: None
+	
+	# quite dirty, rewrite it one time
+	def _handle_greeting(*args, **kwargs):
+		sys.modules["__main__"].greeting_callback(func(*args, **kwargs))
+		
+	return _handle_greeting
+		
+	
 __json_invalid_re = re.compile("[\x01-\x1f]+")
 
 class WonderfulSoup(BeautifulSoup):
 	def __init__(self, raw_html):
 		BeautifulSoup.__init__(self, markup = raw_html, features = "lxml")
+		_parse_greeting(self)
 
 #===============================================================================
 # FUNCTIONS
@@ -96,6 +110,41 @@ def __reduce_contents(tag):
 def __purify_nickname(nickname):
 	return nickname.strip("#")
 
+@__greeting_handle_wrap
+def _parse_greeting(ws):
+	greeting = None
+	
+	_greeting_cont = ws.find(id="greetings")
+	if (not _greeting_cont is None):
+		try:
+			user_nickname = _greeting_cont.find("a", href=re.compile("/users/.+")).stripped_strings.next()
+		except AttributeError:
+			user_nickname = None
+		
+		greeting = u""
+		
+		for _tag in _greeting_cont.find_all(["script", "form"]) + _greeting_cont.find_all(id="logout"):
+			_tag.decompose()
+		
+		for _str in _greeting_cont.stripped_strings:
+			if (_str == user_nickname):
+				greeting += " %username%"
+			elif ("%username%" in _str):
+				greeting += _str.replace("%username%", "%%username%%")
+			else:
+				if ((len(greeting) > 0) and (not greeting[-1].isspace()) and
+					(not _str[0].isspace()) and
+					(not _str[0] in (".", ",", "!", "?", ";"))):
+					
+					sep = " "
+				else:
+					sep = ""
+				
+				greeting += sep + _str
+		
+	return greeting.strip()
+	
+
 #===============================================================================
 # COMMON PARSING
 #===============================================================================
@@ -155,8 +204,8 @@ def parse_live_messages_list(livectl_json, return_token):
 		res_msgs = (res_msgs, int(live_data["token"]))
 		
 	return res_msgs
-		
-	
+
+
 #===============================================================================
 # USER PARSING
 #===============================================================================
@@ -565,15 +614,14 @@ def parse_glagne_presidents(raw_html):
 def parse_glagne_elections(elec_json_raw):
 	elec_data = __parse_json_reply(elec_json_raw)
 	
-	cand_votes = dict()
+	votes = dict()
 	
 	for _vote in elec_data["votes"]:
 		if (_vote.has_key("vote_date")):
-			_vote["voter"] = (_vote["voter"], datetime.fromtimestamp(int(_vote["vote_date"])))
-		
-		if (cand_votes.has_key(_vote["candidate"])):
-			cand_votes[_vote["candidate"]].append(_vote["voter"])
+			_vote_spec = (_vote["candidate"], _vote["voter"], int(_vote["vote_date"]))
 		else:
-			cand_votes[_vote["candidate"]] = [_vote["voter"]]
+			_vote_spec = (_vote["candidate"], _vote["voter"])
+			
+		votes[int(_vote["id"])] = _vote_spec
 		
-	return cand_votes
+	return (votes, int(elec_data["token"]))

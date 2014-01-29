@@ -7,3 +7,14 @@ STRICT_DB_PATH = "../db/lepra_strict.db"
 
 RAW_DB_SCHEMA = "../db/schemas/lepra_raw_schema.sql"
 RAW_DB_PATH = "../db/lepra_raw.db"
+
+# -------------------------------------
+cfg_params = {
+			"never_halt" : True,
+			"collect_greetings" : True,
+			
+			
+			"elections" : False,
+			"lepra_live" : False,
+			"glagne_metadata" : False
+}

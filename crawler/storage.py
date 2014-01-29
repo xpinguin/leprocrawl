@@ -738,6 +738,70 @@ class PassiveStorage:
 		return True
 	
 	
+	def store_greeting(self, greeting_text, **kwargs):
+		"""
+			stores greeting in database
+			
+			@arg greeting_text - text of greeting
+			
+			@return [bool] result
+		"""
+		
+		observed_date = self.__get_observed_date(kwargs)
+		# -------------
+		
+		if (not isinstance(greeting_text, (str, unicode))):
+			return False
+		# -------------
+		
+		query_res = self.db_cur.execute(
+					"""
+					SELECT id, content, first_observed_date, last_observed_date, times_occured
+					FROM greeting
+					WHERE content LIKE ?
+					""",
+					(greeting_text,)
+		)
+		query_row = query_res.fetchone()
+		
+		if (query_row is None):
+			# new greeting, yay!
+			self.db_cur.execute(
+						"""
+						INSERT INTO greeting
+								(content, first_observed_date, last_observed_date, times_occured)
+						VALUES (?, ?, ?, 1)
+						""",
+						(greeting_text, observed_date, observed_date)
+			)
+			self.db_conn.commit()
+			
+		else:
+			_id = int(query_row[0])
+			first_observed_date = int(query_row[2])
+			last_observed_date = int(query_row[3])
+			times_occured = int(query_row[4])
+			
+			if (observed_date < first_observed_date):
+				first_observed_date = observed_date
+			elif (observed_date > last_observed_date):
+				last_observed_date = observed_date
+				
+			times_occured += 1
+			
+			self.db_cur.execute(
+						"""
+						UPDATE greeting
+						SET first_observed_date = ?, last_observed_date = ?, times_occured = ?
+						WHERE id = ?
+						""",
+						(first_observed_date, last_observed_date, times_occured, _id)
+			)
+			self.db_conn.commit()
+		# ------	
+			
+		return True
+	
 	def get_known_users(self):
 		"""
 			@return set() of all nicknames
