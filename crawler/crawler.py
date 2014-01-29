@@ -225,7 +225,7 @@ def retrieve_user_favorites(http_conn, nickname):
 			
 		except LocationRedirect:
 			# this means that user do not publish his/her favorites
-			return None
+			return [None,]
 		
 		_cur_fav_page += 1
 		total_favs += _cur_favs
