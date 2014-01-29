@@ -1,0 +1,83 @@
+0. == parse problems ==
+
+		{ERR} Exception caught in retrieve_user_favorites('olitakich'):
+		TypeError('expected string or buffer',)
+
+		--
+		{ERR} Exception caught in retrieve_comment_rating('36867282, 1663562'):
+			TypeError('expected string or buffer',)
+
+		--
+		{ERR} Exception caught in retrieve_user_favorites('legasy'):
+			TypeError('expected string or buffer',)
+
+		--
+		{ERR} Exception caught in retrieve_user_favorites('Mitz'):
+			TypeError('expected string or buffer',)
+
+		--
+		{ERR} Exception caught in retrieve_user_favorites('lublu-zubi'):
+			TypeError('expected string or buffer',)
+
+		--
+		{ERR} Exception caught in retrieve_user_info('#Bullwinkle#'):
+			AttributeError("'NoneType' object has no attribute 'a'",)
+
+		--
+		{ERR} Exception caught in retrieve_user_favorites('NiXoZ'):
+			TypeError('expected string or buffer',)
+
+		--
+		{ERR} Exception caught in retrieve_user_info('Удав'):
+			UnicodeEncodeError('ascii', u'\u0423\u0434\u0430\u0432', 0, 4, 'ordinal not in range(128)')
+
+		--
+		{ERR} Exception caught in retrieve_post('1575704, '):
+			AttributeError("'NoneType' object has no attribute 'attrs'",)
+
+		--
+		{ERR} Exception caught in retrieve_post('1318686, '):
+			AttributeError("'NoneType' object has no attribute 'attrs'",)
+
+		--
+		{ERR} Exception caught in retrieve_post('1379203, '):
+			AttributeError("'NoneType' object has no attribute 'attrs'",)
+
+		--
+		{ERR} Exception caught in retrieve_user_info('Рысьь'):
+			UnicodeEncodeError('ascii', u'\u0420\u044b\u0441\u044c\u044c', 0, 5, 'ordinal not in range(128)')
+
+		--
+		{ERR} Exception caught in retrieve_post('1376987, '):
+			AttributeError("'NoneType' object has no attribute 'attrs'",)
+
+		--
+		{ERR} Exception caught in retrieve_user_info('dirty'):
+			AttributeError("'NoneType' object has no attribute 'find_all'",)
+
+		--
+		{ERR} Exception caught in retrieve_post('1234295, '):
+			AttributeError("'NoneType' object has no attribute 'attrs'",)
+
+		--
+		{ERR} Exception caught in retrieve_post('213659, '):
+			AttributeError("'NoneType' object has no attribute 'find'",)
+
+
+1. == API misconception? ==
+		--
+		{ERR} Exception caught in retrieve_post('1665404, '):
+			Exception('json reply status bad', '{"status":"ERR","message":""}')
+			
+2. == deduce "frequency amortization" function in non-uniform random walks (posts, users) ==
+
+	GOAL: popular/active users (and posts) should be checked more frequently,
+			however other posts should not be forgotten: once-per-day seems like enough 
+			
+3. == store and crawl sublepras info ==
+3.1 == crawl glagne info: ministers and banned ==
+
+4. == monitor elections every wednesday (crawl) ==
+
+5. == collect tag-lines ==			
+
