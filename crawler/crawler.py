@@ -454,22 +454,39 @@ def storage_worker(storage_queue):
 	while (True):
 		method_name, args, kwargs = storage_queue.get(block = True, timeout = None)
 		
-		try:
-			_method_res = getattr(p_stor, method_name)(*args, **kwargs)
-		except Exception as e:
-			print_safe("\n{ERR} Exception caught in %s(%s, %s):\n\t%s\n\n" %
-						(method_name, repr(args), repr(kwargs), repr(e))
-			)
-			continue
+		# ------
+		_out_cont = False
+		while (True):
+			try:
+				_method_res = getattr(p_stor, method_name)(*args, **kwargs)
+				
+			except sqlite3.OperationalError as _e:
+				print_safe("\n{ERR} Operational Error while %s(%s, %s):\n\t%s\n+++ RETRYING FOREVER...\n" %
+							(method_name, repr(args), repr(kwargs), repr(_e))
+				)
+				
+				sleep(1)
+				continue
+			
+			except Exception as _e:
+				print_safe("\n{ERR} Exception caught in %s(%s, %s):\n\t%s\n\n" %
+							(method_name, repr(args), repr(kwargs), repr(_e))
+				)
+				_out_cont = True
+			
+			break
 		
-		# -----
+		if (_out_cont): continue
+		# ------
+		
+		# ------
 		if (not _method_res):
 			# try to reinject method back (may be, it awaits some other method to complete?)
 			try:
 				storage_queue.put((method_name, args), block = False)
 			except QueueFullException:
 				continue
-		# -----
+		# ------
 		
 		# ---- DEBUG ----------------------------------------------------
 		if (method_name == "store_user"):

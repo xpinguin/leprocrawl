@@ -1,17 +1,7 @@
 CRAWLER
 ==============================
 
-0. == [correctly] finalize workers pool on exit ==
-
-1. == handle situations where user has closed access to his/her favourites ==
-
-	WHEN: retrieve_user_favourites returns None
-	
-	DISCUSSION
-		how to distinguish between following situations:
-					a) user's favourites were not yet parse (NULL value)
-					b) user has empty favourites ('[]' value)
-					c) user has blocked access to his favourites (NULL value)
+1. == [correctly] finalize workers pool on exit ==
 
 2. == deduce "frequency amortization" function in non-uniform random walks (posts, users) ==
 
