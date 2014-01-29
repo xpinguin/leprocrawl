@@ -14,7 +14,7 @@ from threading import Thread, Lock as ThLock
 from Queue import Empty as QueueEmptyException
 from Queue import Full as QueueFullException
 import random
-from itertools import chain
+from itertools import chain, repeat
 import codecs
 
 from config import *
@@ -499,8 +499,16 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 			P(user, user_occur_freq) = user_occur_freq / sum({user_occur_freq(user) | any user})
 	"""
 	
+	# try to load observed users' nicknames from DB
+	p_stor = PassiveStorage(RAW_DB_PATH)
+	_users_observed_set = p_stor.get_known_users()
+	p_stor.close()
+	
+	print("\n{INFO} Users precached: %u\n" % len(_users_observed_set))
+	# ----
+	
 	http_conn = MyHTTPConnection("leprosorium.ru")
-	users_observed = dict()
+	users_observed = dict(zip(_users_observed_set, repeat(1)))
 	users_new = set()
 	_total_users_freq = [0]
 	_lock = ThLock()
@@ -650,9 +658,17 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 			P(post_id, post_occur_freq) = post_occur_freq / sum({post_occur_freq(post_id) | any post_id})
 	"""
 	
+	# try to load observed posts from DB
+	p_stor = PassiveStorage(RAW_DB_PATH)
+	_posts_observed_set = p_stor.get_known_posts()
+	p_stor.close()
+	
+	print("\n{INFO} Posts precached: %u\n" % len(_posts_observed_set))
+	# ----
+	
 	http_conn = MyHTTPConnection("leprosorium.ru")
 	
-	posts_observed = dict()
+	posts_observed = dict(zip(_posts_observed_set, repeat(1)))
 	posts_new = set()
 	posts_sublepras_override = dict()
 	
@@ -798,9 +814,15 @@ def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 			??? 
 	"""
 	
+	# try to load observed comments from DB
+	p_stor = PassiveStorage(RAW_DB_PATH)
+	comments_observed = p_stor.get_known_comments()
+	p_stor.close()
+	
+	print("\n{INFO} Comments precached: %u\n" % len(comments_observed))
+	# ----
 	
 	http_conn = MyHTTPConnection("leprosorium.ru")
-	comments_observed = set()
 	co_lock = ThLock()
 	
 	# -----------------------------------------------------
@@ -894,7 +916,7 @@ glagne_http_conn = MyHTTPConnection("leprosorium.ru")
 
 _crawl_threads = [
 		Thread(target = crawl_lepra_live, args = (glagne_http_conn, post_queue)),
-		Thread(target = crawl_sublepra, args = (glagne_http_conn, "", post_queue))
+		Thread(target = crawl_sublepra, args = (glagne_http_conn, "baraholka", post_queue))
 ]
 
 for _th in _crawl_threads:

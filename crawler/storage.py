@@ -32,6 +32,9 @@ class PassiveStorage:
 			self.db_cur.executescript(_schema_f.read())
 			self.db_conn.commit()
 	
+	def close(self):
+		self.db_conn.close()
+	
 	def __get_observed_date(self, kwa):
 		if (not kwa.has_key("observed_date")):
 			return int(time())
@@ -721,7 +724,88 @@ class PassiveStorage:
 		
 		# ----
 		return True
+	
+	
+	def get_known_users(self):
+		"""
+			@return set() of all nicknames
+		"""
+		
+		nicknames = dict()
+		res_nicknames_set = set()
+		
+		query_res = self.db_cur.execute(
+					"""
+					SELECT nickname, observed_date, user_id
+					FROM user_data
+					WHERE nickname IS NOT NULL
+					"""
+		)
+		
+		for _row in query_res:
+			if (_row[2] is None):
+				res_nicknames_set.add(_row[0])
+				continue
 			
+			obs_date = int(_row[1])
+			
+			try:
+				if (obs_date > nicknames[_row[0]]):
+					nicknames[_row[0]] = obs_date
+			except KeyError:
+				nicknames[_row[0]] = obs_date
+		
+		res_nicknames_set.update(set(nicknames.iterkeys()))
+			
+		return res_nicknames_set
+	
+	def get_known_posts(self):
+		"""
+			@return set() of all (post_id, sublepra_name) tuples
+		"""
+		
+		posts = dict()
+		
+		query_res = self.db_cur.execute(
+					"""
+					SELECT post_id, sublepra_name, observed_date
+					FROM post_props
+					WHERE post_id IS NOT NULL
+					"""
+		)
+		
+		for _row in query_res:
+			if (_row[1] is None):
+				_row[1] = ""
+			obs_date = int(_row[2])
+			
+			try:
+				if (obs_date > posts[_row[0]][1]):
+					posts[_row[0]] = (_row[1], obs_date)
+			except KeyError:
+				posts[_row[0]] = (_row[1], obs_date)
+		
+		return set((_p_id, _sl[0]) for _p_id, _sl in posts.iteritems())
+	
+	def get_known_comments(self):
+		"""
+			@return set() of all (comment_id, post_id) tuples
+		"""
+		
+		comments = set()
+		
+		query_res = self.db_cur.execute(
+					"""
+					SELECT lepro_cid, post_id
+					FROM comment
+					WHERE (post_id IS NOT NULL) AND (lepro_cid IS NOT NULL)
+					"""
+		)
+		
+		for _row in query_res:
+			comments.add((_row[0], _row[1]))
+		
+		return comments
 			
 
 #===============================================================================

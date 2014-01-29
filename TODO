@@ -1,6 +1,8 @@
 CRAWLER
 ==============================
 
+0. == [correctly] finalize workers pool on exit ==
+
 1. == handle situations where user has closed access to his/her favourites ==
 
 	WHEN: retrieve_user_favourites returns None
