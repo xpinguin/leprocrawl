@@ -123,7 +123,7 @@ class PassiveStorage:
 		# ----------------------------------------------------------------------------
 		
 		# deal with "orphan" nickname
-		if (user_data.__class__ in (str, unicode)):
+		if (isinstance(user_data, (str, unicode))):
 			_nickname = user_data
 			assert(_nickname != "")
 			
@@ -131,7 +131,7 @@ class PassiveStorage:
 						"""
 						SELECT user_id
 						FROM user_data
-						WHERE user_data.nickname = ?
+						WHERE user_data.nickname LIKE ?
 						ORDER BY observed_date DESC
 						LIMIT 1
 						""",
@@ -154,15 +154,27 @@ class PassiveStorage:
 				# not orphan - user were deleted
 				_deleted_uid = int(ud_row[0])
 				
-				# update user info in a dramatic way :)
-				self.db_cur.execute(
+				# update user info in a dramatic way (but check first - whether it is already updated) :)
+				_query_res = self.db_cur.execute(
 							"""
-							INSERT INTO user_data (user_id, observed_date, nickname)
-							VALUES (?, ?, NULL)
+							SELECT nickname
+							FROM user_data
+							WHERE (user_data.user_id = ?) AND (nickname IS NULL)
+							ORDER BY observed_date DESC
+							LIMIT 1
 							""",
-							(_deleted_uid, observed_date)
+							(_deleted_uid,)
 				)
-				self.db_conn.commit()
+				
+				if (_query_res.fetchone() is None):
+					self.db_cur.execute(
+								"""
+								INSERT INTO user_data (user_id, observed_date, nickname)
+								VALUES (?, ?, NULL)
+								""",
+								(_deleted_uid, observed_date)
+					)
+					self.db_conn.commit()
 			
 			return True
 		# ----------------------------------------------------------------------------

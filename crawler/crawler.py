@@ -95,7 +95,6 @@ class MyHTTPConnection(HTTPConnection):
 													uri, data)
 			)
 			
-			print(method, uri, data, self.__http_req_headers["Host"])
 			HTTPConnection.request(self, method, uri, data, self.__http_req_headers)
 			self.__last_request_time = datetime.now()
 			
