@@ -93,6 +93,9 @@ def __reduce_contents(tag):
 	).strip()
 
 
+def __purify_nickname(nickname):
+	return nickname.strip("#")
+
 #===============================================================================
 # COMMON PARSING
 #===============================================================================
@@ -132,7 +135,7 @@ def parse_live_messages_list(livectl_json, return_token):
 		)
 		
 		msg["author_uid"] = int(_live_el["userid"])
-		msg["author_nickname"] = _live_el["login"].encode("utf-8")
+		msg["author_nickname"] = __purify_nickname(_live_el["login"].encode("utf-8"))
 		msg["author_gender"] = int(_live_el["gender"])
 		
 		msg["id"] = int(_live_el["id"])
@@ -162,7 +165,7 @@ def parse_user_profile(raw_html):
 	user_data = ObjDict()
 	
 	# -- proper nickname
-	user_data["nickname"] = ws.find(class_="username").a.stripped_strings.next()
+	user_data["nickname"] = __purify_nickname(ws.find(class_="username").a.stripped_strings.next())
 	
 	# -- uid and register date
 	_reg_date_m = re.match(
@@ -176,12 +179,19 @@ def parse_user_profile(raw_html):
 												_reg_date_m.group(4))
 	
 	# -- parent user nickname
-	user_data["parent_nickname"] = ws.find(class_="userparent").a.stripped_strings.next()
+	user_data["parent_nickname"] = __purify_nickname(
+						ws.find(class_="userparent").a.stripped_strings.next()
+	)
 	
 	# -- children users nicknames
 	user_data["children_nicknames"] = []
-	for child_tag in ws.find(class_="userchildren").find_all("a", href = re.compile("/users/.+")):
-		user_data["children_nicknames"].append(child_tag.stripped_strings.next())
+	try:
+		for child_tag in ws.find(class_="userchildren").find_all("a", href = re.compile("/users/.+")):
+			user_data["children_nicknames"].append(
+						__purify_nickname(child_tag.stripped_strings.next())
+			)
+	except AttributeError:
+		user_data["children_nicknames"] = None # info is absent rather than childfree user :)
 		
 	# -- real name, city-country
 	_user_basic_info = ws.find(class_="userbasicinfo")
@@ -267,8 +277,12 @@ def parse_post_and_comments(raw_html):
 	post_data["is_gold"] = int("golden" in _post_tag.attrs["class"])
 	
 	_post_metadata_tag = _post_tag.find("div", class_="dd").find("div", class_="p")
-	post_data["author_nickname"] = \
-				_post_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
+	if (_post_metadata_tag is None): 
+		_post_metadata_tag = _post_tag #.find("div", class_="dt")
+		
+	post_data["author_nickname"] = __purify_nickname(
+		_post_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
+	)
 				
 	post_data["author_uid"] = int(_user_id_re.match(
 						_post_metadata_tag.find("a", class_="u", onclick=_user_id_re).attrs["onclick"]
@@ -299,7 +313,12 @@ def parse_post_and_comments(raw_html):
 		_comm["content"] = __reduce_contents(_comment_tag.find("div", class_="dt"))
 		
 		_comment_metadata_tag = _comment_tag.find("div", class_="dd")
-		_comm["author_nickname"] = _comment_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
+		if (_comment_metadata_tag is None): 
+			_comment_metadata_tag = _comment_tag #.find("div", class_="dt")
+		
+		_comm["author_nickname"] = __purify_nickname(
+					_comment_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
+		)
 		_comm["create_date"] = __parse_comment_date("".join(_comment_metadata_tag.find("div", class_="p").stripped_strings))
 		
 		try:
@@ -360,8 +379,9 @@ def parse_sublepra_info(raw_html):
 		return None
 	
 	try:
-		sublepra_data["owner_nickname"] = \
+		sublepra_data["owner_nickname"] = __purify_nickname(
 			ws.find("div", class_="creator").find("a", href=re.compile(ur"/users/.+")).stripped_strings.next()
+		)
 		
 		_create_date_m = re.match(
 							ur".*?(\d+)\s+(.+?)\s+(\d+).*",
@@ -389,7 +409,7 @@ def parse_sublepra_info(raw_html):
 		if (_list_tags is None):
 			return []
 		
-		return [_li.a.stripped_strings.next() for _li in _list_tags]
+		return [__purify_nickname(_li.a.stripped_strings.next()) for _li in _list_tags]
 	# --------------------------------------------------------------------------	
 		
 			
@@ -478,7 +498,7 @@ def parse_glagne_democracy(raw_html):
 		
 		res = []
 		for _cont_tr in _cont_table.find_all("tr"):
-			res.append(_cont_tr.a.stripped_strings.next())
+			res.append(__purify_nickname(_cont_tr.a.stripped_strings.next()))
 				
 		return res
 	# ------------------------------------------------------------------------------
@@ -536,7 +556,7 @@ def parse_glagne_presidents(raw_html):
 											day = int(_end_date_m.group(1))
 									)
 			
-		president["user_nickname"] = row[1].a.stripped_strings.next()
+		president["user_nickname"] = __purify_nickname(row[1].a.stripped_strings.next())
 		
 		presidents.append(president)
 		

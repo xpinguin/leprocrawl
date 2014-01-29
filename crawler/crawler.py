@@ -44,6 +44,10 @@ def print_safe_init():
 """	
 
 #------------------------------------------------------------------------------
+class LocationRedirect(Exception):
+	http_status = None
+	http_location = None
+
 class MyHTTPConnection(HTTPConnection):
 	def __init__(self, *args, **kwargs):
 		HTTPConnection.__init__(self, *args, **kwargs)
@@ -91,13 +95,14 @@ class MyHTTPConnection(HTTPConnection):
 													uri, data)
 			)
 			
+			print(method, uri, data, self.__http_req_headers["Host"])
 			HTTPConnection.request(self, method, uri, data, self.__http_req_headers)
 			self.__last_request_time = datetime.now()
 			
 			try:
 				resp = self.getresponse()
-			except httplib.error as e:
-				print_safe("\n{ERR} exception from httplib:\n\t%s\n" % repr(e))
+			except Exception as e:
+				print_safe("\n{ERR} exception from the depth of httplib:\n\t%s\n" % repr(e))
 				
 				self.close()
 				self.connect()
@@ -105,11 +110,29 @@ class MyHTTPConnection(HTTPConnection):
 			
 			try:
 				res = zlib.decompress(resp.read(), 16 + zlib.MAX_WBITS)
-			except zlib.error as e:
-				print_safe("\n{ERR} exception from zlib:\n\t%s\n" % repr(e))
+			except Exception as e:
+				print_safe("\n{ERR} exception from the depth of zlib:\n\t%s\n" % repr(e))
 				continue
 				
-			if (resp.status >= 400): res = None
+			if (resp.status >= 400):
+				res = None
+				
+			elif (resp.status >= 300):
+				_loc_exc = LocationRedirect()
+				_loc_exc.http_status = resp.status
+				_loc_exc.http_location = resp.getheader("Location", None)
+				
+				if (_loc_exc.http_location is None):
+					res = None
+				else:
+					self.__lock.release()
+					raise _loc_exc
+				
+			elif (resp.status >= 200) and (not isinstance(res, (str, unicode, buffer))):
+				print_safe("\n{ERR} invalid response (code = %u, data_type = %s):\n\t'%s'\n" % 
+						(resp.status, str(res.__class__), repr(res))
+				)
+				continue
 			
 			break
 		
@@ -132,21 +155,35 @@ def retrieve_user_info(http_conn, nickname):
 	"""
 		@return dictionary of user's attributes (except for favorites)
 	"""
-	user_data_raw = http_conn.request("GET", "/users/%s" % nickname.decode("utf-8"), "")
+	if (isinstance(nickname, str)):
+		nickname = nickname.decode("utf-8")
+	
+	user_data_raw = http_conn.request("GET", "/users/%s" % nickname, "")
 	
 	if (user_data_raw is None):
 		return None
 	
 	user_profile_data = parse_user_profile(user_data_raw)
-	
-	user_profile_data["karma"] = parse_rating(
-					http_conn.request(
-									"POST",
-									"/karmactl/",
-									"view=%u" % user_profile_data.uid
-					)
-	)
 	user_profile_data["favs"] = None
+	
+	try:
+		user_profile_data["karma"] = parse_rating(
+						http_conn.request(
+										"POST",
+										"/karmactl/",
+										"view=%u" % user_profile_data.uid
+						)
+		)
+	#
+	#except TypeError
+	#	pass
+	#	TODO: see retrieve_user_favorites
+	#
+	except Exception as _e:
+		print("\n{ERR} karma of '%s' could not be retrieved due to:\n\t%s\n" % 
+				(nickname, repr(_e)))
+
+		user_profile_data["karma"] = None
 		
 	return user_profile_data
 
@@ -155,18 +192,41 @@ def retrieve_user_favorites(http_conn, nickname):
 		@return list of post_id
 	"""
 	
+	if (isinstance(nickname, str)):
+		nickname = nickname.decode("utf-8")
+	
 	_favs_pages = 1
 	_cur_fav_page = 1
 	total_favs = []
 	
+	# ---
+	_attempts = 0
+	_max_attempts = 5
+	# ---
+	
 	while (_cur_fav_page <= _favs_pages):
-		_cur_favs, _favs_pages = parse_user_favorites(
-						http_conn.request(
-										"GET",
-										"/users/%s/favs/%u/" % (nickname.decode("utf-8"), _cur_fav_page),
-										""
-						)
-		)
+		try:
+			_cur_favs, _favs_pages = parse_user_favorites(
+							http_conn.request(
+											"GET",
+											"/users/%s/favs/%u/" % (nickname, _cur_fav_page),
+											""
+							)
+			)
+		
+		except TypeError as _e:
+			if (_attempts < _max_attempts):
+				_attempts += 1
+				continue
+			else:
+				print("\n{ERR} attempts exceeded in retrieve_user_favorites(%s):\n\t%s\n",
+						(nickname, repr(_e))
+				)
+				break
+			
+		except LocationRedirect:
+			# this means that user do not publish his/her favorites
+			return None
 		
 		_cur_fav_page += 1
 		total_favs += _cur_favs
@@ -195,14 +255,26 @@ def retrieve_post(http_conn, post_id, sublepra_name):
 	post_data = parse_post_and_comments(post_data_raw)
 	
 	post_data["sublepra_name"] = sublepra_name
-	post_data["rating"] = parse_rating(
-							http_conn.request(
-											"POST",
-											"/votesctl/",
-											"id=%u&type=1" % post_id,
-											vhost = _sl_hostname
-							)
-	)
+	
+	try:
+		post_data["rating"] = parse_rating(
+								http_conn.request(
+												"POST",
+												"/votesctl/",
+												"id=%u&type=1" % post_id,
+												vhost = _sl_hostname
+								)
+		)
+	#
+	#except TypeError
+	#	pass
+	#	TODO: see retrieve_user_favorites
+	#
+	except Exception as _e:
+		print("\n{ERR} rating of post (%u, '%s') could not be retrieved due to:\n\t%s\n" % 
+				(post_id, sublepra_name, repr(_e)))
+
+		post_data["rating"] = None
 		
 	return post_data
 
@@ -214,14 +286,25 @@ def retrieve_comment_rating(http_conn, comment_id, post_id, sublepra_name = ""):
 		_sl_hostname = ""
 	# -------------------------------------------------
 	
-	return parse_rating(
-				http_conn.request(
-						"POST",
-						"/votesctl/",
-						"id=%u&post_id=%u&type=0" % (comment_id, post_id),
-						vhost = _sl_hostname
-				)
-	)
+	try:
+		return parse_rating(
+					http_conn.request(
+							"POST",
+							"/votesctl/",
+							"id=%u&post_id=%u&type=0" % (comment_id, post_id),
+							vhost = _sl_hostname
+					)
+		)
+	#
+	#except TypeError
+	#	pass
+	#	TODO: see retrieve_user_favorites
+	#
+	except Exception as _e:
+		print("\n{ERR} rating of comment (%u, %u) could not be retrieved due to:\n\t%s\n" % 
+				(comment_id, post_id, repr(_e)))
+
+		return None
 	
 
 def retrieve_sublepras_list(http_conn):
@@ -568,8 +651,11 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 	"""
 	
 	http_conn = MyHTTPConnection("leprosorium.ru")
+	
 	posts_observed = dict()
 	posts_new = set()
+	posts_sublepras_override = dict()
+	
 	_total_posts_freq = [0]
 	_lock = ThLock()
 	
@@ -577,10 +663,13 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 	def _receive_posts():
 		while (True):
 			post_id, urgent, sublepra_name = post_queue.get(block = True, timeout = None)
-			post_desc = (post_id, sublepra_name)
 			
 			_lock.acquire()
 			
+			if (posts_sublepras_override.has_key(post_id)):
+				sublepra_name = posts_sublepras_override[post_id]
+			
+			post_desc = (post_id, sublepra_name)
 			try:
 				posts_observed[post_desc] += 1
 				if (urgent): posts_new.add(post_desc)
@@ -632,12 +721,41 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 			continue
 		# --------------------
 		
-		try:
-			post_data = retrieve_post(http_conn, _rand_post[0], _rand_post[1])
-		except Exception as e:
-			print_safe("\n{ERR} Exception caught in retrieve_post('%u, %s'):\n\t%s\n\n" % \
-											(_rand_post[0],_rand_post[1], repr(e)))
-			continue
+		# --------
+		_out_cont = False
+		while (True):
+			try:
+				post_data = retrieve_post(http_conn, _rand_post[0], _rand_post[1])
+				
+			except LocationRedirect as loc_exc:
+				real_sublepra_name = \
+					re.match(".*?(\w+)\.leprosorium\.ru", loc_exc.http_location, re.U).group(1)
+				
+				_lock.acquire()
+				
+				posts_sublepras_override[_rand_post[0]] = real_sublepra_name
+				post_freq = posts_observed.pop(_rand_post)
+
+				try:
+					posts_new.remove(_rand_post)
+				except KeyError:
+					pass
+				
+				_rand_post = (_rand_post[0], real_sublepra_name)
+				posts_observed[_rand_post] = post_freq
+				
+				_lock.release()
+				
+				continue
+				
+			except Exception as e:
+				print_safe("\n{ERR} Exception caught in retrieve_post(%u, '%s'):\n\t%s\n\n" % \
+												(_rand_post[0], _rand_post[1], repr(e)))
+				_out_cont = True
+			
+			break
+		if (_out_cont): continue
+		# --------
 		
 		if (post_data is None):
 			storage_queue.put(
@@ -771,7 +889,6 @@ for _proc in _processes:
 	_proc.daemon = True
 	_proc.start()
 # ---------------------
-
 
 glagne_http_conn = MyHTTPConnection("leprosorium.ru")
 
