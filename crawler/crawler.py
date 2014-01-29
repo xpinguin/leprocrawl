@@ -24,6 +24,24 @@ from parsers import *
 
 
 #------------------------------------------------------------------------------ 
+def __amortize_occur_freq_inc(increment, prev_freq):
+	"""
+		WARN: completely arbitary!
+		TODO: deduce it, bro (begin with plotting of what you've done right below)
+	
+		NOTE: may be relate to object's (user/post) rating?
+	"""
+	
+	if (prev_freq < 100):
+		multiple = 4
+	elif (prev_freq < 1000):
+		multiple = 2
+	else:
+		multiple = 1
+		
+	return increment*multiple
+	
+
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------ 
@@ -401,6 +419,20 @@ def crawl_lepra_live(http_conn, post_queue):
 			
 	return token
 
+def monitor_elections(http_conn, storage_queue):
+	cand_votes = parse_glagne_elections(http_conn.request(
+				"POST",
+				"/floridactl/",
+				"token=1"# + "&rows[]=10"*5
+	))
+	
+	print(len(reduce(lambda res, _v: res + _v, cand_votes.values(), [])))
+	print
+	print(cand_votes["CCCP"])
+	
+	for vd in sorted(cand_votes["Nurmamed"], key = lambda _v: _v[1]):
+		print("'%s' at '%s'" % (vd[0], vd[1]))
+
 #------------------------------------------------------------------------------ 
 # 	TEST CODE
 #------------------------------------------------------------------------------ 
@@ -428,20 +460,6 @@ democracy = parse_glagne_democracy(__make_http_request_to_glagne(
 				""
 ))
 print(democracy)
-"""
-
-"""
-cand_votes = parse_glagne_elections(__make_http_request_to_glagne(
-				"POST",
-				"/floridactl/",
-				"token=1"# + "&rows[]=10"*5
-))
-
-print(len(reduce(lambda res, _v: res + _v, cand_votes.values(), [])))
-print
-print cand_votes["CCCP"]
-#for vd in sorted(cand_votes["Nurmamed"], key = lambda _v: _v[1]):
-#	print "'%s' at '%s'" % (vd[0], vd[1])
 """
 
 #===============================================================================
@@ -524,7 +542,7 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 	# ----
 	
 	http_conn = MyHTTPConnection("leprosorium.ru")
-	users_observed = dict(zip(_users_observed_set, repeat(1)))
+	users_observed = dict(zip(_users_observed_set, repeat(__amortize_occur_freq_inc(1, 0))))
 	users_new = set()
 	_total_users_freq = [0]
 	_lock = ThLock()
@@ -537,12 +555,14 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 			_lock.acquire()
 			
 			try:
-				users_observed[user_nickname] += 1
+				freq_inc = __amortize_occur_freq_inc(1, users_observed[user_nickname])
+				users_observed[user_nickname] += freq_inc
 			except KeyError:
-				users_observed[user_nickname] = 1
+				freq_inc = __amortize_occur_freq_inc(1, 0)
+				users_observed[user_nickname] = freq_inc
 				users_new.add(user_nickname)
 			
-			_total_users_freq[0] += 1
+			_total_users_freq[0] += freq_inc
 			
 			_lock.release()
 				
@@ -684,7 +704,7 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 	
 	http_conn = MyHTTPConnection("leprosorium.ru")
 	
-	posts_observed = dict(zip(_posts_observed_set, repeat(1)))
+	posts_observed = dict(zip(_posts_observed_set, repeat(__amortize_occur_freq_inc(1, 0))))
 	posts_new = set()
 	posts_sublepras_override = dict()
 	
@@ -703,13 +723,15 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 			
 			post_desc = (post_id, sublepra_name)
 			try:
-				posts_observed[post_desc] += 1
+				freq_inc = __amortize_occur_freq_inc(1, posts_observed[post_desc])
+				posts_observed[post_desc] += freq_inc
 				if (urgent): posts_new.add(post_desc)
 			except KeyError:
-				posts_observed[post_desc] = 1
+				freq_inc = __amortize_occur_freq_inc(1, 0)
+				posts_observed[post_desc] = freq_inc
 				posts_new.add(post_desc)
 			
-			_total_posts_freq[0] += 1
+			_total_posts_freq[0] += freq_inc
 			
 			
 			_lock.release()

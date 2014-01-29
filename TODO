@@ -8,6 +8,8 @@ CRAWLER
 	GOAL: popular/active users (and posts) should be checked more frequently,
 			however other posts should not be forgotten: once-per-day seems like enough
 			
+	NOTE: relate func to user/post rating?
+			
 3. == store and crawl sublepras info ==
 3.1 == crawl glagne info: ministers and banned ==
 
