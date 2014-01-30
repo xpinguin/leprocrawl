@@ -562,7 +562,7 @@ def monitor_metadata(http_conn, storage_queue):
 def storage_worker(storage_queue):
 	p_stor = PassiveStorage(RAW_DB_PATH)
 	
-	slow_reinject_set = set()
+	slow_reinject_list = []
 	sr_lock = ThLock()
 	
 	# ------------------------------------------------
@@ -577,11 +577,11 @@ def storage_worker(storage_queue):
 			sr_lock.acquire()
 			
 			try:
-				_method = slow_reinject_set.pop()
-			except KeyError:
+				_method = slow_reinject_list.pop(random.randint(0, len(slow_reinject_list)-1))
+			except (ValueError, IndexError):
 				sr_lock.release()
 				
-				sleep(30)
+				sleep(60)
 				continue
 			
 			sr_lock.release()
@@ -626,7 +626,7 @@ def storage_worker(storage_queue):
 		if (not _method_res):
 			# try to reinject method back (may be, it awaits some other method to complete?)
 			sr_lock.acquire()
-			slow_reinject_set.add((method_name, args, kwargs))
+			slow_reinject_list.append((method_name, args, kwargs))
 			sr_lock.release()
 			
 			print("<storage> {WARN} '%s' reinjected!" % method_name)
