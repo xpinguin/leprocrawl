@@ -695,7 +695,7 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 	# -----------------------------------------------------
 	def _receive_users():
 		while (True):
-			user_nickname = user_queue.get(block = True, timeout = None)
+			user_nickname = purify_nickname(user_queue.get(block = True, timeout = None))
 			
 			_lock.acquire()
 			
