@@ -6,6 +6,7 @@ import sys
 import httplib
 from urllib import urlencode
 from httplib import HTTPConnection
+import socket
 import zlib
 from time import sleep, time
 from datetime import datetime, timedelta
@@ -22,6 +23,9 @@ from config import *
 from defs import *
 from storage import *
 from parsers import *
+
+#------------------------------------------------------------------------------
+socket.setdefaulttimeout(SOCKET_GLOBAL_TIMEOUT)
 
 
 #------------------------------------------------------------------------------ 
@@ -86,6 +90,23 @@ class MyHTTPConnection(HTTPConnection):
 			
 		self.__lock = Lock()
 		self.__last_request_time = 0
+		
+	def connect(self, *args, **kwargs):
+		"""
+			fault tolerance version
+		"""
+		
+		while (True):
+			try:
+				return HTTPConnection.connect(self, *args, **kwargs)
+			except Exception as _e:
+				print("\n{ERR} [HTTPConnection] failed to connect to '%s', due to:\n\t%s\nRetrying...\n" %
+						(self.host, repr(_e)) 
+				)
+				
+				sleep(HTTP_RECONNECT_ATTEMPT_DELAY)
+				continue
+		
 	
 	def request(self, method, uri, data, **kwargs):
 		# ----------------------------------------------
@@ -116,8 +137,18 @@ class MyHTTPConnection(HTTPConnection):
 						(time() - self.__last_request_time)
 			)
 			
-			HTTPConnection.request(self, method, uri, data, self.__http_req_headers)
-			self.__last_request_time = time()
+			try:
+				HTTPConnection.request(self, method, uri, data, self.__http_req_headers)
+			except Exception as _e:
+				print("\n{ERR} failed to perform http request ('%s', '%s', '%s'), due to:\n\t%s\nRetrying...\n" %
+						(method, uri, data, repr(_e)) 
+				)
+				
+				self.close()
+				self.connect()
+				continue
+			finally:
+				self.__last_request_time = time()
 			
 			try:
 				resp = self.getresponse()

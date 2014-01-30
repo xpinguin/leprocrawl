@@ -2,6 +2,10 @@
 HTTP_REQUEST_DELAY = 1.0
 
 # -------------------------------------
+SOCKET_GLOBAL_TIMEOUT = 30
+HTTP_RECONNECT_ATTEMPT_DELAY = 15
+
+# -------------------------------------
 STRICT_DB_SCHEMA = "../db/schemas/lepra_strict_schema.sql"
 STRICT_DB_PATH = "../db/lepra_strict.db"
 
@@ -18,6 +22,6 @@ cfg_params = {
 			"lepra_live" : True,
 			"glagne_metadata" : False,
 			
-			"all_glagne_posts" : True,
+			"all_glagne_posts" : False,
 			"all_sublepras_posts" : True
 }
