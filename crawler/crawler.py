@@ -579,10 +579,19 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 	"""
 	
 	# try to load observed users' nicknames from DB
-	p_stor = PassiveStorage(RAW_DB_PATH)
-	_users_observed_set = p_stor.get_known_users()
-	p_stor.close()
-	del p_stor
+	while (True):
+		try:
+			p_stor = PassiveStorage(RAW_DB_PATH, True)
+			_users_observed_set = p_stor.get_known_users()
+			p_stor.close()
+			del p_stor
+		except sqlite3.OperationalError as _e:
+			print("\n{ERR} Operational Error on users precaching:\n\t%s\n" % repr(_e))
+			
+			sleep(1)
+			continue
+		
+		break
 	
 	print("\n{INFO} Users precached: %u\n" % len(_users_observed_set))
 	# ----
@@ -750,10 +759,19 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 	"""
 	
 	# try to load observed posts from DB
-	p_stor = PassiveStorage(RAW_DB_PATH)
-	_posts_observed_set = p_stor.get_known_posts()
-	p_stor.close()
-	del p_stor
+	while (True):
+		try:
+			p_stor = PassiveStorage(RAW_DB_PATH, True)
+			_posts_observed_set = p_stor.get_known_posts()
+			p_stor.close()
+			del p_stor
+		except sqlite3.OperationalError as _e:
+			print("\n{ERR} Operational Error on posts precaching:\n\t%s\n" % repr(_e))
+			
+			sleep(1)
+			continue
+		
+		break
 	
 	print("\n{INFO} Posts precached: %u\n" % len(_posts_observed_set))
 	# ----
@@ -914,10 +932,19 @@ def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 	"""
 	
 	# try to load observed comments from DB
-	p_stor = PassiveStorage(RAW_DB_PATH)
-	comments_observed = p_stor.get_known_comments()
-	p_stor.close()
-	del p_stor
+	while (True):
+		try:
+			p_stor = PassiveStorage(RAW_DB_PATH, True)
+			comments_observed = p_stor.get_known_comments()
+			p_stor.close()
+			del p_stor
+		except sqlite3.OperationalError as _e:
+			print("\n{ERR} Operational Error on comments precaching:\n\t%s\n" % repr(_e))
+			
+			sleep(1)
+			continue
+		
+		break
 	
 	print("\n{INFO} Comments precached: %u\n" % len(comments_observed))
 	# ----
@@ -1028,13 +1055,15 @@ _processes = [
 
 for _proc in _processes:
 	_proc.daemon = True
-	_proc.start()
+	#_proc.start()
 # ---------------------
 
 glagne_http_conn = MyHTTPConnection("leprosorium.ru")
 
-#pd = retrieve_post(glagne_http_conn, 1664677, "")
-#sys.exit(1)
+pd = retrieve_post(glagne_http_conn, 1662913, "")
+for _tag, _supporters in pd.tags.iteritems():
+	print(_tag, _supporters, "\n")
+sys.exit(1)
 
 _crawl_threads = []
 

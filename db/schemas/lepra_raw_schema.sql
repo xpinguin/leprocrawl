@@ -145,8 +145,7 @@ CREATE TABLE IF NOT EXISTS 'comment_props' (
 	observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 	
 	author_nickname TEXT,
-	indent INTEGER,
-	total_rating INTEGER
+	indent INTEGER
 );
 CREATE INDEX IF NOT EXISTS _idx_comment_props_id ON comment_props (comment_id);
 
@@ -165,6 +164,14 @@ CREATE TABLE IF NOT EXISTS 'comment_rating' (
 	rating_json TEXT
 );
 CREATE INDEX IF NOT EXISTS _idx_comment_rating_id ON comment_rating (comment_id);
+
+CREATE TABLE IF NOT EXISTS 'comment_total_rating' (
+	comment_id INTEGER REFERENCES comment (lepro_cid) NOT NULL,
+	observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+	
+	total_rating INTEGER
+);
+CREATE INDEX IF NOT EXISTS _idx_comment_totalrating_id ON comment_total_rating (comment_id);
 
 --
 -- Glagne voting
@@ -195,4 +202,14 @@ CREATE TABLE IF NOT EXISTS 'greeting' (
 );
 CREATE INDEX IF NOT EXISTS _idx_greeting_id ON greeting (id);
 CREATE INDEX IF NOT EXISTS _idx_greeting_content ON greeting (content);
+
+--
+-- Posts tagging
+--
+CREATE TABLE IF NOT EXISTS 'post_tag' (
+	id INTEGER PRIMARY KEY,
+	content TEXT UNIQUE
+);
+CREATE INDEX IF NOT EXISTS _idx_post_tag_id ON post_tag (id);
+CREATE INDEX IF NOT EXISTS _idx_post_tag_content ON post_tag (content);
 

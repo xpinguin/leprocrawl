@@ -17,10 +17,7 @@ def __greeting_handle_wrap(func):
 		return lambda *args, **kwargs: None
 	
 	# quite dirty, rewrite it one time
-	def _handle_greeting(*args, **kwargs):
-		sys.modules["__main__"].greeting_callback(func(*args, **kwargs))
-		
-	return _handle_greeting
+	return lambda *args, **kwargs: sys.modules["__main__"].greeting_callback(func(*args, **kwargs))
 		
 	
 __json_invalid_re = re.compile("[\x01-\x1f]+")
@@ -338,6 +335,23 @@ def parse_post_and_comments(raw_html):
 					).group(1))
 	
 	post_data["create_date"] = __parse_comment_date("".join(_post_metadata_tag.stripped_strings))
+	
+	_tags_tag = ws.find(id="tags_common")
+	if (_tags_tag is None):
+		post_data["tags"] = None
+	else:
+		post_data["tags"] = {}
+		
+		for _a in _tags_tag.find_all(lambda _t: (_t.name == "a") and \
+												(_t.attrs.has_key("title")) and \
+												(_t.attrs.has_key("alt")) and \
+												(_t.attrs.has_key("href"))):
+			
+			post_data.tags[_a.stripped_strings.next()] = [
+								__purify_nickname(_nickname)
+								for _nickname in _a.attrs["alt"].split(" ")
+			]
+				
 	
 	# --- do comments
 	post_data["comments"] = []

@@ -1,6 +1,6 @@
 # local stuff
 crawler/cookie.txt
-db/*.db
+db/*.db*
 screenlog.*
 *.json
 

@@ -24,13 +24,14 @@ class PassiveStorage:
 		NOTE: sqlite3 backend implied!
 	"""
 	
-	def __init__(self, db_name):
+	def __init__(self, db_name, read_only = False):
 		self.db_conn = sqlite3.connect(db_name, detect_types = sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
 		self.db_cur = self.db_conn.cursor()
 		
-		with open(RAW_DB_SCHEMA, "rb") as _schema_f:
-			self.db_cur.executescript(_schema_f.read())
-			self.db_conn.commit()
+		if (not read_only):
+			with open(RAW_DB_SCHEMA, "rb") as _schema_f:
+				self.db_cur.executescript(_schema_f.read())
+				self.db_conn.commit()
 	
 	def close(self):
 		self.db_conn.close()
@@ -576,7 +577,7 @@ class PassiveStorage:
 			_db_do_commit = lambda: self.db_conn.commit()
 		# ---
 		
-		update_comment_data = [False]*3
+		update_comment_data = [False]*4
 		observed_date = self.__get_observed_date(kwargs)
 		# ----------------------------------------------------------------------------
 		
@@ -625,20 +626,23 @@ class PassiveStorage:
 		
 		query_res = self.db_cur.execute(
 				"""
-				SELECT comment_props.author_nickname, comment_props.indent, comment_props.total_rating,
+				SELECT comment_props.author_nickname, comment_props.indent,
 						comment_content.content,
-						comment_rating.rating_json
+						comment_rating.rating_json,
+						comment_total_rating.total_rating
 					
 				FROM comment
 				INNER JOIN comment_props ON (comment_props.comment_id = comment.lepro_cid)
 				INNER JOIN comment_content ON (comment_content.comment_id = comment.lepro_cid)
 				INNER JOIN comment_rating ON (comment_rating.comment_id = comment.lepro_cid)
+				INNER JOIN comment_total_rating ON (comment_total_rating.comment_id = comment.lepro_cid)
 				
 				WHERE (comment.lepro_cid = ?)
 				ORDER BY 
 						comment_props.observed_date DESC,
 						comment_content.observed_date DESC,
-						comment_rating.observed_date DESC
+						comment_rating.observed_date DESC,
+						comment_total_rating.observed_date DESC
 						
 				LIMIT 1
 				""",
@@ -653,7 +657,7 @@ class PassiveStorage:
 				return False
 			# -----
 			
-			update_comment_data = [True]*3
+			update_comment_data = [True]*len(update_comment_data)
 			
 			self.db_cur.execute(
 						"""
@@ -672,7 +676,7 @@ class PassiveStorage:
 			
 			# -- comment_props
 			update_comment_data[0] = self.__are_fields_different(_afd_ctx,
-								"author_nickname", "indent", "total_rating"
+								"author_nickname", "indent"
 			)
 			
 			# -- comment_content
@@ -682,6 +686,9 @@ class PassiveStorage:
 			update_comment_data[2] = self.__are_fields_different(_afd_ctx, 
 								("rating_json", None, _comm_rating, True)
 			)
+			
+			# -- comment_total_rating
+			update_comment_data[3] = self.__are_fields_different(_afd_ctx, "total_rating")
 									
 			
 		# --------------------------
@@ -689,11 +696,11 @@ class PassiveStorage:
 			self.db_cur.execute(
 						"""
 						INSERT INTO comment_props
-							(comment_id, observed_date, author_nickname, indent, total_rating) 
-						VALUES (?, ?, ?, ?, ?)
+							(comment_id, observed_date, author_nickname, indent) 
+						VALUES (?, ?, ?, ?)
 						""",
 						(comment_data.id, observed_date, comment_data.author_nickname,
-							comment_data.indent, comment_data.total_rating)
+							comment_data.indent)
 			)
 			_db_do_commit()
 			
@@ -733,6 +740,17 @@ class PassiveStorage:
 				)
 			
 			_db_do_commit()
+			
+		if (update_comment_data[3]):
+			self.db_cur.execute(
+						"""
+						INSERT INTO comment_total_rating
+							(comment_id, observed_date, total_rating) 
+						VALUES (?, ?, ?)
+						""",
+						(comment_data.id, observed_date, comment_data.total_rating)
+			)
+			_db_do_commit()
 		
 		# ----
 		return True
@@ -756,7 +774,7 @@ class PassiveStorage:
 		
 		query_res = self.db_cur.execute(
 					"""
-					SELECT id, content, first_observed_date, last_observed_date, times_occured
+					SELECT id, first_observed_date, last_observed_date, times_occured
 					FROM greeting
 					WHERE content LIKE ?
 					""",
@@ -778,16 +796,14 @@ class PassiveStorage:
 			
 		else:
 			_id = int(query_row[0])
-			first_observed_date = int(query_row[2])
-			last_observed_date = int(query_row[3])
-			times_occured = int(query_row[4])
+			first_observed_date = int(query_row[1])
+			last_observed_date = int(query_row[2])
+			times_occured = int(query_row[3]) + 1
 			
 			if (observed_date < first_observed_date):
 				first_observed_date = observed_date
 			elif (observed_date > last_observed_date):
 				last_observed_date = observed_date
-				
-			times_occured += 1
 			
 			self.db_cur.execute(
 						"""
@@ -801,6 +817,48 @@ class PassiveStorage:
 		# ------	
 			
 		return True
+	
+	def store_post_tag(self, post_tag_text, **kwargs):
+		"""
+			stores post_tag in database
+			
+			@arg post_tag_text - text of tag
+			
+			@return [integer] post_tag_id
+		"""
+		
+		if (not isinstance(post_tag_text, (str, unicode))):
+			return None
+		# -------------
+		
+		query_res = self.db_cur.execute(
+					"""
+					SELECT id
+					FROM post_tag
+					WHERE content LIKE ?
+					""",
+					(post_tag_text,)
+		)
+		query_row = query_res.fetchone()
+		
+		if (query_row is None):
+			# new post tag, yay!
+			self.db_cur.execute(
+						"""
+						INSERT INTO post_tag (content)
+						VALUES (?)
+						""",
+						(post_tag_text,)
+			)
+			self.db_conn.commit()
+			
+			_id = self.db_cur.lastrowid
+			
+		else:
+			_id = int(query_row[0])
+		# ------	
+			
+		return _id
 	
 	def get_known_users(self):
 		"""
