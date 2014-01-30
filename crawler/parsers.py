@@ -418,6 +418,7 @@ def parse_sublepras_list(page_raw_html, **kwargs):
 	_sublepras_stats_tags = ws.find_all("table", class_="jj_stat_table")
 	if (_sublepras_stats_tags is None):
 		raise Exception("no <table> tags with class == 'jj_stat_table'")
+	_sublepras_stats_tags_iter = iter(_sublepras_stats_tags)
 	
 	for _sublepra_tag in _sublepras_tags:
 		sublepra_data = ObjDict()
@@ -440,10 +441,10 @@ def parse_sublepras_list(page_raw_html, **kwargs):
 			sublepra_data["id"] = int(_block_semi.label.attrs["for"].split("_")[-1])
 		
 		# stats
-		_stat_tbl = _sublepras_stats_tags.next()
-		_stat_cells = _stat_tbl.find_all(lambda _t: (_t.name == "td") and (len(_t.attrs) == 0))
+		_stat_tbl = _sublepras_stats_tags_iter.next()
+		_stat_cells = iter(_stat_tbl.find_all(lambda _t: (_t.name == "td") and (len(_t.attrs) == 0)))
 		
-		_next_stat_f = lambda: int(_stat_cells.next().stripped_strings().next())
+		_next_stat_f = lambda: int(_stat_cells.next().stripped_strings.next())
 		sublepra_data["posts_num"] = _next_stat_f()
 		sublepra_data["comments_num"] = _next_stat_f()
 		sublepra_data["subscribers_num"] = _next_stat_f()

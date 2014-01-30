@@ -313,7 +313,30 @@ def retrieve_comment_rating(http_conn, comment_id, post_id, sublepra_name = ""):
 				(comment_id, post_id, repr(_e)))
 
 		return None
+
+def retrieve_sublepras_list(http_conn):
+	"""
+		- sublepras list: sublepra_id, name, title, owner, stats
+	"""
 	
+	_sl_pages = 1
+	_cur_sl_page = 1
+	sublepras = []
+	
+	while (_cur_sl_page <= _sl_pages):
+		_cur_sublepras, _sl_pages = parse_sublepras_list(
+								http_conn.request(
+										"GET",
+										"/underground/created/%u/" % _cur_sl_page,
+										""
+								),
+								sublepra = ""
+		)
+		_cur_sl_page += 1
+		sublepras += _cur_sublepras
+	
+	return sublepras
+
 def retrieve_sublepra_info(http_conn, sublepra_name):
 	if (len(sublepra_name) > 0):
 		_sl_hostname = "%s.leprosorium.ru" % sublepra_name
@@ -461,30 +484,20 @@ def monitor_elections(http_conn, storage_queue):
 		)
 		# -----
 
-def crawl_sublepras_list(http_conn, storage_queue, sublepra_queue):
+def crawl_over_all_sublepras(http_conn, post_queue):
 	"""
-		-sublepras list: sublepra_id, name, title, owner
+		- list all sublepras
+		- sort by number of comments
+		- call crawl_sublepra_posts for each
 	"""
 	
-	_sl_pages = 1
-	_cur_sl_page = 1
-	sublepras = []
+	sublepras_list = retrieve_sublepras_list(http_conn)
+	sublepras_list = sorted(sublepras_list, key = lambda _sl: _sl.comments_num, reverse = True)
 	
-	while (_cur_sl_page <= _sl_pages):
-		_cur_sublepras, _sl_pages = parse_sublepras_list(
-								http_conn.request(
-										"GET",
-										"/underground/created/%u/" % _cur_sl_page,
-										""
-								),
-								sublepra = ""
-		)
-		_cur_sl_page += 1
-		sublepras += _cur_sublepras
+	for _sl_data in sublepras_list:
+		crawl_sublepra_posts(http_conn, _sl_data["name"], post_queue)
 		
-		# -- en
-	
-	return sublepras
+	return True
 
 def monitor_metadata(http_conn, storage_queue):
 	"""
@@ -493,6 +506,7 @@ def monitor_metadata(http_conn, storage_queue):
 			
 	"""
 	
+	pass
 	
 #===============================================================================
 # PARALLEL WORKERS
@@ -1068,6 +1082,16 @@ if (cfg_params["lepra_live"]):
 if (cfg_params["elections"]):
 	_crawl_threads.append(
 			Thread(target = monitor_elections, args = (glagne_http_conn, storage_queue)),
+	)
+	
+if (cfg_params["all_glagne_posts"]):
+	_crawl_threads.append(
+			Thread(target = crawl_sublepra_posts, args = (glagne_http_conn, "", post_queue))
+	)
+	
+if (cfg_params["all_sublepras_posts"]):
+	_crawl_threads.append(
+			Thread(target = crawl_over_all_sublepras, args = (glagne_http_conn, post_queue))
 	)
 
 for _th in _crawl_threads:

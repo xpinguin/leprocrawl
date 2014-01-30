@@ -242,3 +242,17 @@ CREATE TABLE IF NOT EXISTS 'tag' (
 CREATE INDEX IF NOT EXISTS _idx_tag_id ON tag (id);
 CREATE INDEX IF NOT EXISTS _idx_tag_content ON tag (content);
 
+
+
+-------------------------------------------------------------------------------------------
+--- CONVINIENT STUFF
+-------------------------------------------------------------------------------------------
+
+CREATE VIEW IF NOT EXISTS '_v_greeting_per_sublepra' AS
+select	greeting.content,
+		greeting_sublepra.sublepra_name, greeting_sublepra.first_observed_date,
+		greeting_sublepra.last_observed_date, greeting_sublepra.times_occured
+from greeting
+inner join greeting_sublepra on greeting.id = greeting_sublepra.greeting_id
+order by greeting.content asc;
+
