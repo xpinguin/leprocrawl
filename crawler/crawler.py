@@ -196,11 +196,6 @@ def retrieve_user_info(http_conn, nickname):
 										"view=%u" % user_profile_data.uid
 						)
 		)
-	#
-	#except TypeError
-	#	pass
-	#	TODO: see retrieve_user_favorites
-	#
 	except Exception as _e:
 		print("\n{ERR} karma of '%s' could not be retrieved due to:\n\t%s\n" % 
 				(nickname, repr(_e)))
@@ -222,8 +217,8 @@ def retrieve_user_favorites(http_conn, nickname):
 	total_favs = []
 	
 	# ---
-	_attempts = 0
-	_max_attempts = 5
+	#_attempts = 0
+	#_max_attempts = 5
 	# ---
 	
 	while (_cur_fav_page <= _favs_pages):
@@ -236,15 +231,15 @@ def retrieve_user_favorites(http_conn, nickname):
 							)
 			)
 		
-		except TypeError as _e:
-			if (_attempts < _max_attempts):
-				_attempts += 1
-				continue
-			else:
-				print("\n{ERR} attempts exceeded in retrieve_user_favorites(%s):\n\t%s\n",
-						(nickname, repr(_e))
-				)
-				break
+		#except TypeError as _e:
+		#	if (_attempts < _max_attempts):
+		#		_attempts += 1
+		#		continue
+		#	else:
+		#		print("\n{ERR} attempts exceeded in retrieve_user_favorites(%s):\n\t%s\n",
+		#				(nickname, repr(_e))
+		#		)
+		#		break
 			
 		except LocationRedirect:
 			# this means that user do not publish his/her favorites
@@ -287,11 +282,6 @@ def retrieve_post(http_conn, post_id, sublepra_name):
 												vhost = _sl_hostname
 								)
 		)
-	#
-	#except TypeError
-	#	pass
-	#	TODO: see retrieve_user_favorites
-	#
 	except Exception as _e:
 		print("\n{ERR} rating of post (%u, '%s') could not be retrieved due to:\n\t%s\n" % 
 				(post_id, sublepra_name, repr(_e)))
@@ -317,11 +307,6 @@ def retrieve_comment_rating(http_conn, comment_id, post_id, sublepra_name = ""):
 							vhost = _sl_hostname
 					)
 		)
-	#
-	#except TypeError
-	#	pass
-	#	TODO: see retrieve_user_favorites
-	#
 	except Exception as _e:
 		print("\n{ERR} rating of comment (%u, %u) could not be retrieved due to:\n\t%s\n" % 
 				(comment_id, post_id, repr(_e)))
@@ -904,16 +889,21 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 		
 		user_queue.put(post_data.author_nickname, block = True, timeout = None)
 		
+		for _comment in post_data.comments:
+			user_queue.put(_comment.author_nickname, block = True, timeout = None)
+			comm_rating_queue.put([_comment.id, post_data.id], block = True, timeout = None)
+			
 		if (isinstance(post_data.rating, dict)):
 			for _rate in post_data.rating.itervalues():
 				try:
 					user_queue.put(_rate[1], block = True, timeout = None)
 				except IndexError:
 					pass
-	
-		for _comment in post_data.comments:
-			user_queue.put(_comment.author_nickname, block = True, timeout = None)
-			comm_rating_queue.put([_comment.id, post_data.id], block = True, timeout = None)
+				
+		if (not post_data.tags is None) and (isinstance(post_data.tags, dict)):
+			for _tag_supporters in post_data.tags.itervalues():
+				for _u_nickname in _tag_supporters:
+					user_queue.put(_u_nickname, block = True, timeout = None)
 		# ---
 	
 	# ---
@@ -1016,7 +1006,7 @@ def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 						pass
 	
 	recv_thread.join()
-# --------------------------------------------------------------------------------------		
+# --------------------------------------------------------------------------------------
 
 def __greeting_callback(storage_queue, greeting):
 	"""
@@ -1053,18 +1043,19 @@ _processes = [
 		Process(target = comm_rating_handle_worker, args = (storage_queue, comm_rating_queue, user_queue))
 ]
 
+#_processes[-1].daemon = True
+#_processes[-1].start()
+
+#sleep(100500)
+
+#"""
 for _proc in _processes:
 	_proc.daemon = True
-	#_proc.start()
+	_proc.start()
+#"""
 # ---------------------
 
 glagne_http_conn = MyHTTPConnection("leprosorium.ru")
-
-pd = retrieve_post(glagne_http_conn, 1662913, "")
-for _tag, _supporters in pd.tags.iteritems():
-	print(_tag, _supporters, "\n")
-sys.exit(1)
-
 _crawl_threads = []
 
 # run crawlers according to config

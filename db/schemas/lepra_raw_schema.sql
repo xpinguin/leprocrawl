@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS 'post_rating' (
 );
 CREATE INDEX IF NOT EXISTS _idx_post_rating_id ON post_rating (post_id);
 
+-- whether this needs decomposition, or not?
 CREATE TABLE IF NOT EXISTS 'post_comm_sequence' (
 	post_id INTEGER REFERENCES post (lepro_pid) NOT NULL,
 	observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
@@ -128,6 +129,16 @@ CREATE TABLE IF NOT EXISTS 'post_comm_sequence' (
 );
 CREATE INDEX IF NOT EXISTS _idx_post_commseq_id ON post_comm_sequence (post_id);
 
+-- TODO: decompose
+-- now I am not of much interest in tags
+-- tags_json <=> [(tag_id, (nick1, nick2, ...)), ...]
+CREATE TABLE IF NOT EXISTS 'post_tags' (
+	post_id INTEGER REFERENCES post (lepro_pid) NOT NULL,
+	observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+	
+	tags_json TEXT
+);
+CREATE INDEX IF NOT EXISTS _idx_post_tags_id ON post_tags (post_id);
 --
 -- Comment
 --
@@ -206,10 +217,10 @@ CREATE INDEX IF NOT EXISTS _idx_greeting_content ON greeting (content);
 --
 -- Posts tagging
 --
-CREATE TABLE IF NOT EXISTS 'post_tag' (
+CREATE TABLE IF NOT EXISTS 'tag' (
 	id INTEGER PRIMARY KEY,
-	content TEXT UNIQUE
+	content TEXT UNIQUE NOT NULL
 );
-CREATE INDEX IF NOT EXISTS _idx_post_tag_id ON post_tag (id);
-CREATE INDEX IF NOT EXISTS _idx_post_tag_content ON post_tag (content);
+CREATE INDEX IF NOT EXISTS _idx_tag_id ON tag (id);
+CREATE INDEX IF NOT EXISTS _idx_tag_content ON tag (content);
 

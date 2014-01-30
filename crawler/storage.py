@@ -238,7 +238,7 @@ class PassiveStorage:
 				return False
 			# -----
 			
-			update_user_data = [True]*5
+			update_user_data = [True]*len(update_user_data)
 			#user_data.set_default_value(None)
 			
 			self.db_cur.execute(
@@ -371,7 +371,7 @@ class PassiveStorage:
 		"""
 		
 		deleted_comments = set()
-		update_post_data = [False]*4
+		update_post_data = [False]*5
 		observed_date = self.__get_observed_date(kwargs)
 		# ----------------------------------------------------------------------------
 		
@@ -407,19 +407,24 @@ class PassiveStorage:
 		
 		# ----------------------------------------------------------------------------
 		_post_rating = self.__transform_or_nothing(
-											post_data,
-											"rating",
-											lambda x: json.dumps(self.__transform_rating(x))
+							post_data,
+							"rating",
+							lambda x: json.dumps(self.__transform_rating(x))
 		)
 		_post_comm_seq = self.__transform_or_nothing(
-											post_data,
-											"comments",
-											lambda x: json.dumps(sorted([_c["id"] for _c in x]))
+							post_data,
+							"comments",
+							lambda x: json.dumps(sorted([_c["id"] for _c in x]))
+		)
+		_post_tags = self.__transform_or_nothing(
+							post_data,
+							"tags",
+							lambda x: json.dumps(sorted([(self.store_post_tag(_tag), _users) for _tag, _users in x.iteritems()]))
 		)
 		_post_create_date = self.__transform_or_nothing(
-											post_data,
-											"create_date",
-											lambda x: datetime_to_timestamp(x)
+							post_data,
+							"create_date",
+							lambda x: datetime_to_timestamp(x)
 		)
 		# ----------------------------------------------------------------------------
 		
@@ -428,20 +433,23 @@ class PassiveStorage:
 				SELECT post_props.author_nickname, post_props.sublepra_name, post_props.is_gold,
 						post_content.content,
 						post_rating.rating_json,
-						post_comm_sequence.comm_sequence_json
+						post_comm_sequence.comm_sequence_json,
+						post_tags.tags_json
 					
 				FROM post
 				INNER JOIN post_props ON (post_props.post_id = post.lepro_pid)
 				INNER JOIN post_content ON (post_content.post_id = post.lepro_pid)
 				INNER JOIN post_rating ON (post_rating.post_id = post.lepro_pid)
 				INNER JOIN post_comm_sequence ON (post_comm_sequence.post_id = post.lepro_pid)
+				INNER JOIN post_tags ON (post_tags.post_id = post.lepro_pid)
 				
 				WHERE (post.lepro_pid = ?)
 				ORDER BY 
 						post_props.observed_date DESC,
 						post_content.observed_date DESC,
 						post_rating.observed_date DESC,
-						post_comm_sequence.observed_date DESC
+						post_comm_sequence.observed_date DESC,
+						post_tags.observed_date DESC
 						
 				LIMIT 1
 				""",
@@ -450,7 +458,7 @@ class PassiveStorage:
 		query_row = query_res.fetchone()
 		
 		if (query_row is None):
-			update_post_data = [True]*4
+			update_post_data = [True]*len(update_post_data)
 			
 			self.db_cur.execute(
 						"""
@@ -484,7 +492,7 @@ class PassiveStorage:
 			
 			# -- post_rating
 			update_post_data[2] = self.__are_fields_different(_afd_ctx, 
-								("rating_json", None, _post_rating, True)
+								("rating_json", None, _post_rating, False)
 			)
 				
 			# -- post_comm_sequence
@@ -493,10 +501,15 @@ class PassiveStorage:
 									or
 									(self.__are_fields_different(
 												_afd_ctx,
-												("comm_sequence_json", None, _post_comm_seq, True)
+												("comm_sequence_json", None, _post_comm_seq, False)
 									))
 			)
-									
+			
+			# -- post_post_tags
+			update_post_data[4] = self.__are_fields_different(
+												_afd_ctx,
+												("tags_json", None, _post_tags, False)
+									)
 			
 		# --------------------------
 		if (update_post_data[0]):
@@ -541,6 +554,17 @@ class PassiveStorage:
 						VALUES (?, ?, ?)
 						""",
 						(post_data.id, observed_date, _post_comm_seq)
+			)
+			self.db_conn.commit()
+			
+		if (update_post_data[4]):
+			self.db_cur.execute(
+						"""
+						INSERT INTO post_tags
+							(post_id, observed_date, tags_json) 
+						VALUES (?, ?, ?)
+						""",
+						(post_data.id, observed_date, _post_tags)
 			)
 			self.db_conn.commit()
 			
@@ -831,10 +855,30 @@ class PassiveStorage:
 			return None
 		# -------------
 		
+		#  try cache at first
+		while (True):
+			try:
+				return self.__post_tags_cache[post_tag_text]
+			except AttributeError:
+				self.__post_tags_cache = dict((_c, _id) for _id, _c in self.get_known_post_tags())
+				continue
+			except KeyError:
+				pass
+			
+			break
+		# ---------------------
+
+		# ---
+		if (kwargs.has_key("delayed_commit")) and (kwargs["delayed_commit"]):
+			_db_do_commit = lambda: None
+		else:
+			_db_do_commit = lambda: self.db_conn.commit()
+		# ---
+		
 		query_res = self.db_cur.execute(
 					"""
 					SELECT id
-					FROM post_tag
+					FROM tag
 					WHERE content LIKE ?
 					""",
 					(post_tag_text,)
@@ -845,19 +889,23 @@ class PassiveStorage:
 			# new post tag, yay!
 			self.db_cur.execute(
 						"""
-						INSERT INTO post_tag (content)
+						INSERT INTO tag (content)
 						VALUES (?)
 						""",
 						(post_tag_text,)
 			)
-			self.db_conn.commit()
+			_db_do_commit()
 			
 			_id = self.db_cur.lastrowid
 			
 		else:
 			_id = int(query_row[0])
 		# ------	
-			
+		
+		# update cache
+		self.__post_tags_cache[post_tag_text] = _id
+		# -----
+		
 		return _id
 	
 	def get_known_users(self):
@@ -926,8 +974,6 @@ class PassiveStorage:
 			@return set() of all (comment_id, post_id) tuples
 		"""
 		
-		comments = set()
-		
 		query_res = self.db_cur.execute(
 					"""
 					SELECT lepro_cid, post_id
@@ -936,11 +982,22 @@ class PassiveStorage:
 					"""
 		)
 		
-		for _row in query_res:
-			comments.add((_row[0], _row[1]))
+		return set(query_res)
+	
+	def get_known_post_tags(self):
+		"""
+			@return set() of all (tag.id, tag.content) tuples
+		"""
 		
-		return comments
-			
+		query_res = self.db_cur.execute(
+					"""
+					SELECT id, content
+					FROM tag
+					WHERE 1
+					"""
+		)
+		
+		return set(query_res)
 
 #===============================================================================
 # STRICT REACTIVE STORAGE

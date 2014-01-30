@@ -15,6 +15,6 @@ cfg_params = {
 			
 			
 			"elections" : False,
-			"lepra_live" : False,
+			"lepra_live" : True,
 			"glagne_metadata" : False
 }
