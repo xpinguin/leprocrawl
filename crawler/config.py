@@ -14,6 +14,8 @@ RAW_DB_PATH = "../db/lepra_raw.db"
 
 # -------------------------------------
 cfg_params = {
+			"enable_rconsole" : True,
+			
 			"never_halt" : True,
 			"collect_greetings" : True,
 			

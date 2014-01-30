@@ -24,6 +24,10 @@ from defs import *
 from storage import *
 from parsers import *
 
+if (cfg_params["enable_rconsole"]):
+	from rfoo.utils import rconsole
+	rconsole.spawn_server(None, 55777)
+
 #------------------------------------------------------------------------------
 socket.setdefaulttimeout(SOCKET_GLOBAL_TIMEOUT)
 
@@ -93,7 +97,7 @@ class MyHTTPConnection(HTTPConnection):
 		
 	def connect(self, *args, **kwargs):
 		"""
-			fault tolerance version
+			fault tolerant version
 		"""
 		
 		while (True):
@@ -588,7 +592,7 @@ def storage_worker(storage_queue):
 		if (not _method_res):
 			# try to reinject method back (may be, it awaits some other method to complete?)
 			try:
-				storage_queue.put((method_name, args), block = False)
+				storage_queue.put((method_name, args, kwargs), block = False)
 			except QueueFullException:
 				continue
 		# ------
