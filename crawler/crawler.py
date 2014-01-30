@@ -24,13 +24,13 @@ from defs import *
 from storage import *
 from parsers import *
 
+
 if (cfg_params["enable_rconsole"]):
 	from rfoo.utils import rconsole
 	rconsole.spawn_server(None, 55777)
 
 #------------------------------------------------------------------------------
 socket.setdefaulttimeout(SOCKET_GLOBAL_TIMEOUT)
-
 
 #------------------------------------------------------------------------------ 
 def __amortize_occur_freq_inc(increment, prev_freq):
@@ -214,6 +214,7 @@ def retrieve_user_info(http_conn, nickname):
 	"""
 	if (isinstance(nickname, str)):
 		nickname = nickname.decode("utf-8")
+	nickname = purify_nickname(nickname)
 	
 	user_data_raw = http_conn.request("GET", "/users/%s" % nickname, "")
 	
@@ -246,6 +247,7 @@ def retrieve_user_favorites(http_conn, nickname):
 	
 	if (isinstance(nickname, str)):
 		nickname = nickname.decode("utf-8")
+	nickname = purify_nickname(nickname)
 	
 	_favs_pages = 1
 	_cur_fav_page = 1
@@ -560,6 +562,38 @@ def monitor_metadata(http_conn, storage_queue):
 def storage_worker(storage_queue):
 	p_stor = PassiveStorage(RAW_DB_PATH)
 	
+	slow_reinject_set = set()
+	sr_lock = ThLock()
+	
+	# ------------------------------------------------
+	def _slow_reinject():
+		"""
+			dumb, but working solution for situations, where
+			secondary related (ex.: user favs or comments rating) data
+			comes before their "masters" (ex.: users and comments respectively)
+		"""
+		
+		while (True):
+			sr_lock.acquire()
+			
+			try:
+				_method = slow_reinject_set.pop()
+			except KeyError:
+				sr_lock.release()
+				
+				sleep(30)
+				continue
+			
+			sr_lock.release()
+				
+			sleep(10)
+			storage_queue.put(_method, block = True, timeout = None)
+	# ------------------------------------------------
+	
+	sr_thread = Thread(target = _slow_reinject)
+	sr_thread.start()
+	# -----------------------------------------
+	
 	while (True):
 		method_name, args, kwargs = storage_queue.get(block = True, timeout = None)
 		
@@ -591,10 +625,11 @@ def storage_worker(storage_queue):
 		# ------
 		if (not _method_res):
 			# try to reinject method back (may be, it awaits some other method to complete?)
-			try:
-				storage_queue.put((method_name, args, kwargs), block = False)
-			except QueueFullException:
-				continue
+			sr_lock.acquire()
+			slow_reinject_set.add((method_name, args, kwargs))
+			sr_lock.release()
+			
+			print("<storage> {WARN} '%s' reinjected!" % method_name)
 		# ------
 		
 		# ---- DEBUG ----------------------------------------------------
@@ -616,7 +651,9 @@ def storage_worker(storage_queue):
 			
 		else:
 			print_safe("<storage> %s(...)" % method_name)
-			
+	
+	# -----
+	sr_thread.join()		
 		
 	
 def user_handle_worker(storage_queue, user_queue, userfav_queue):
@@ -1099,6 +1136,7 @@ def __greeting_callback(storage_queue, greeting, sublepra_name):
 #===============================================================================
 # MAIN LOGIC
 #===============================================================================
+
 storage_queue = Queue()
 user_queue = Queue()
 userfav_queue = Queue()

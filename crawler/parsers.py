@@ -112,8 +112,12 @@ def __reduce_contents(tag):
 	).strip()
 
 
+# ---
 def __purify_nickname(nickname):
 	return nickname.strip("#")
+
+purify_nickname = __purify_nickname
+# ---
 
 @__greeting_handle_wrap
 def _parse_greeting(ws, **kwargs):
@@ -431,8 +435,9 @@ def parse_sublepras_list(page_raw_html, **kwargs):
 		sublepra_data["name"] = \
 			_sublepra_tag.find("a", class_="jj_link").stripped_strings.next().split(".")[0]
 		
-		sublepra_data["owner_nickname"] = \
+		sublepra_data["owner_nickname"] = __purify_nickname(
 			_sublepra_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
+		)
 			
 		_block_semi = _sublepra_tag.find("div", class_="block_semi")
 		if (_block_semi is None):

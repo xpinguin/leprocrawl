@@ -25,5 +25,5 @@ cfg_params = {
 			"glagne_metadata" : False,
 			
 			"all_glagne_posts" : False,
-			"all_sublepras_posts" : True
+			"all_sublepras_posts" : False
 }

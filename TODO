@@ -15,3 +15,5 @@ CRAWLER
 
 4. == monitor elections every wednesday (crawl) ==
 
+5. == migrate to PostgreSQL: SQLite brings too much troubles with concurrent access ==
+
