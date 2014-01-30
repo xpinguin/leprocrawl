@@ -780,7 +780,7 @@ class PassiveStorage:
 		return True
 	
 	
-	def store_greeting(self, greeting_text, **kwargs):
+	def store_greeting(self, greeting_text, sublepra_name, **kwargs):
 		"""
 			stores greeting in database
 			
@@ -792,13 +792,14 @@ class PassiveStorage:
 		observed_date = self.__get_observed_date(kwargs)
 		# -------------
 		
-		if (not isinstance(greeting_text, (str, unicode))):
-			return False
+		assert(isinstance(greeting_text, (str, unicode)))
+		assert(isinstance(sublepra_name, (str, unicode)))
 		# -------------
 		
+		# find or add greeting itself
 		query_res = self.db_cur.execute(
 					"""
-					SELECT id, first_observed_date, last_observed_date, times_occured
+					SELECT greeting.id
 					FROM greeting
 					WHERE content LIKE ?
 					""",
@@ -810,16 +811,58 @@ class PassiveStorage:
 			# new greeting, yay!
 			self.db_cur.execute(
 						"""
-						INSERT INTO greeting
-								(content, first_observed_date, last_observed_date, times_occured)
-						VALUES (?, ?, ?, 1)
+						INSERT INTO greeting (content)
+						VALUES (?)
 						""",
-						(greeting_text, observed_date, observed_date)
+						(greeting_text,)
 			)
 			self.db_conn.commit()
 			
+			_greeting_id = self.db_cur.lastrowid
+			
 		else:
-			_id = int(query_row[0])
+			_greeting_id = int(query_row[0])
+			
+		# update greeting<->sublepra relation
+		if (sublepra_name is None):
+			query_res = self.db_cur.execute(
+						"""
+						SELECT id, first_observed_date, last_observed_date, times_occured
+						FROM greeting_sublepra
+						WHERE greeting_id = ? AND sublepra_name IS NULL
+						""",
+						(_greeting_id,)
+			)
+		else:
+			query_res = self.db_cur.execute(
+						"""
+						SELECT id, first_observed_date, last_observed_date, times_occured
+						FROM greeting_sublepra
+						WHERE greeting_id = ? AND sublepra_name LIKE ?
+						""",
+						(_greeting_id, sublepra_name)
+			)
+		
+		query_row = query_res.fetchone()
+		
+		if (query_row is None):
+			# new greeting, yay!
+			self.db_cur.execute(
+						"""
+						INSERT INTO greeting_sublepra 
+									(greeting_id, sublepra_name, first_observed_date, 
+										last_observed_date, times_occured)
+						VALUES (?, ?, ?, ?, 1)
+						""",
+						(_greeting_id, sublepra_name, observed_date, observed_date)
+			)
+			self.db_conn.commit()
+			
+			_rel_id = self.db_cur.lastrowid
+			
+		else:
+			_rel_id = int(query_row[0])
+		
 			first_observed_date = int(query_row[1])
 			last_observed_date = int(query_row[2])
 			times_occured = int(query_row[3]) + 1
@@ -831,11 +874,11 @@ class PassiveStorage:
 			
 			self.db_cur.execute(
 						"""
-						UPDATE greeting
+						UPDATE greeting_sublepra
 						SET first_observed_date = ?, last_observed_date = ?, times_occured = ?
 						WHERE id = ?
 						""",
-						(first_observed_date, last_observed_date, times_occured, _id)
+						(first_observed_date, last_observed_date, times_occured, _rel_id)
 			)
 			self.db_conn.commit()
 		# ------	

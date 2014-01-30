@@ -17,15 +17,23 @@ def __greeting_handle_wrap(func):
 		return lambda *args, **kwargs: None
 	
 	# quite dirty, rewrite it one time
-	return lambda *args, **kwargs: sys.modules["__main__"].greeting_callback(func(*args, **kwargs))
+	def _greeting_handle(*args, **kwargs):
+		try:
+			sublepra_name = kwargs.pop("sublepra")
+		except KeyError:
+			sublepra_name = None
+			
+		return sys.modules["__main__"].greeting_callback(func(*args, **kwargs), sublepra_name)
+
+	return _greeting_handle
 		
 	
 __json_invalid_re = re.compile("[\x01-\x1f]+")
 
 class WonderfulSoup(BeautifulSoup):
-	def __init__(self, raw_html):
+	def __init__(self, raw_html, **kwargs):
 		BeautifulSoup.__init__(self, markup = raw_html, features = "lxml")
-		_parse_greeting(self)
+		_parse_greeting(self, **kwargs)
 
 #===============================================================================
 # FUNCTIONS
@@ -108,7 +116,7 @@ def __purify_nickname(nickname):
 	return nickname.strip("#")
 
 @__greeting_handle_wrap
-def _parse_greeting(ws):
+def _parse_greeting(ws, **kwargs):
 	greeting = None
 	
 	_greeting_cont = ws.find(id="greetings")
@@ -206,8 +214,8 @@ def parse_live_messages_list(livectl_json, return_token):
 #===============================================================================
 # USER PARSING
 #===============================================================================
-def parse_user_profile(raw_html):
-	ws = WonderfulSoup(raw_html)
+def parse_user_profile(raw_html, **kwargs):
+	ws = WonderfulSoup(raw_html, **kwargs)
 	user_data = ObjDict()
 	
 	# -- proper nickname
@@ -285,8 +293,8 @@ def parse_user_profile(raw_html):
 	
 	return user_data
 
-def parse_user_favorites(page_raw_html):
-	ws = WonderfulSoup(page_raw_html)
+def parse_user_favorites(page_raw_html, **kwargs):
+	ws = WonderfulSoup(page_raw_html, **kwargs)
 	favs_list = []
 	
 	for _post_tag in ws.find_all(lambda _tag: (_tag.name == "div") \
@@ -309,12 +317,12 @@ def parse_user_favorites(page_raw_html):
 #===============================================================================
 # POST AND COMMENTS PARSING
 #===============================================================================
-def parse_post_and_comments(raw_html):
+def parse_post_and_comments(raw_html, **kwargs):
 	_post_id_re = re.compile(ur"p(\d+)", re.U)
 	_user_id_re = re.compile(ur".*?'u(\d+)'", re.U)
 	# ---
 	
-	ws = WonderfulSoup(raw_html)
+	ws = WonderfulSoup(raw_html, **kwargs)
 	post_data = ObjDict()
 	
 	_post_tag = ws.find("div", id=_post_id_re, class_=("post", "ord"))
@@ -399,13 +407,17 @@ def parse_post_and_comments(raw_html):
 #===============================================================================
 # SUBLEPRA(S) PARSING
 #===============================================================================
-def parse_sublepras_list(page_raw_html):
-	ws = WonderfulSoup(page_raw_html)
+def parse_sublepras_list(page_raw_html, **kwargs):
+	ws = WonderfulSoup(page_raw_html, **kwargs)
 	sublepras_list = []
 	
 	_sublepras_tags = ws.find_all("div", class_="jj_general_text")
 	if (_sublepras_tags is None):
 		raise Exception("no <div> tags with class == 'jj_general_text'")
+	
+	_sublepras_stats_tags = ws.find_all("table", class_="jj_stat_table")
+	if (_sublepras_stats_tags is None):
+		raise Exception("no <table> tags with class == 'jj_stat_table'")
 	
 	for _sublepra_tag in _sublepras_tags:
 		sublepra_data = ObjDict()
@@ -417,12 +429,25 @@ def parse_sublepras_list(page_raw_html):
 			
 		sublepra_data["name"] = \
 			_sublepra_tag.find("a", class_="jj_link").stripped_strings.next().split(".")[0]
+		
+		sublepra_data["owner_nickname"] = \
+			_sublepra_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
 			
 		_block_semi = _sublepra_tag.find("div", class_="block_semi")
 		if (_block_semi is None):
 			sublepra_data["id"] = None
 		else:
 			sublepra_data["id"] = int(_block_semi.label.attrs["for"].split("_")[-1])
+		
+		# stats
+		_stat_tbl = _sublepras_stats_tags.next()
+		_stat_cells = _stat_tbl.find_all(lambda _t: (_t.name == "td") and (len(_t.attrs) == 0))
+		
+		_next_stat_f = lambda: int(_stat_cells.next().stripped_strings().next())
+		sublepra_data["posts_num"] = _next_stat_f()
+		sublepra_data["comments_num"] = _next_stat_f()
+		sublepra_data["subscribers_num"] = _next_stat_f()
+		# -----
 		
 		sublepras_list.append(sublepra_data)
 	
@@ -432,10 +457,10 @@ def parse_sublepras_list(page_raw_html):
 	return (sublepras_list, total_pages_num)
 
 
-def parse_sublepra_info(raw_html):
+def parse_sublepra_info(raw_html, **kwargs):
 	if (len(raw_html.strip()) == 0): return None
 	
-	ws = WonderfulSoup(raw_html)
+	ws = WonderfulSoup(raw_html, **kwargs)
 	sublepra_data = ObjDict()
 	
 	if (not ws.find("body", id="sublepro_aceess_denied") is None):
@@ -507,8 +532,8 @@ def parse_sublepra_json(json_raw):
 #===============================================================================
 # DEMOCRACY-ON-GLAGNE PARSING
 #===============================================================================
-def parse_glagne_democracy(raw_html):
-	ws = WonderfulSoup(raw_html)
+def parse_glagne_democracy(raw_html, **kwargs):
+	ws = WonderfulSoup(raw_html, **kwargs)
 	dem_data = ObjDict()
 	
 	# -- president
@@ -573,11 +598,11 @@ def parse_glagne_democracy(raw_html):
 	
 	return dem_data
 
-def parse_glagne_presidents(raw_html):
+def parse_glagne_presidents(raw_html, **kwargs):
 	_rule_date_re = re.compile(ur".*?(\d\d)\.(\d\d)\.(\d\d\d\d)", re.U | re.S)
 	# ---
 	
-	ws = WonderfulSoup(raw_html)
+	ws = WonderfulSoup(raw_html, **kwargs)
 	presidents = []
 	
 	_ex_img_tag = ws.find("img", src=re.compile(ur"ex-presidents.gif", re.U))

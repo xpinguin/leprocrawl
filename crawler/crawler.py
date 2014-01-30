@@ -185,7 +185,7 @@ def retrieve_user_info(http_conn, nickname):
 	if (user_data_raw is None):
 		return None
 	
-	user_profile_data = parse_user_profile(user_data_raw)
+	user_profile_data = parse_user_profile(user_data_raw, sublepra = "")
 	user_profile_data["favs"] = None
 	
 	try:
@@ -228,7 +228,8 @@ def retrieve_user_favorites(http_conn, nickname):
 											"GET",
 											"/users/%s/favs/%u/" % (nickname, _cur_fav_page),
 											""
-							)
+							),
+							sublepra = ""
 			)
 		
 		#except TypeError as _e:
@@ -269,7 +270,7 @@ def retrieve_post(http_conn, post_id, sublepra_name):
 	if (post_data_raw is None):
 		return None
 	
-	post_data = parse_post_and_comments(post_data_raw)
+	post_data = parse_post_and_comments(post_data_raw, sublepra = sublepra_name)
 	
 	post_data["sublepra_name"] = sublepra_name
 	
@@ -313,51 +314,53 @@ def retrieve_comment_rating(http_conn, comment_id, post_id, sublepra_name = ""):
 
 		return None
 	
-
-def retrieve_sublepras_list(http_conn):
-	_sl_pages = 1
-	_cur_sl_page = 1
-	sublepras = []
-	
-	while (_cur_sl_page <= _sl_pages):
-		_cur_sublepras, _sl_pages = parse_sublepras_list(
-										http_conn.request(
-														"GET",
-														"/underground/created/%u/" % _cur_sl_page,
-														""
-										)
-		)
-		_cur_sl_page += 1
-		sublepras += _cur_sublepras
-	
-	"""
-	# ---
-	for i in xrange(len(sublepras)):
-		_sl_info = crawl_sublepra_info(sublepras[i].name)
-		if (_sl_info is None): continue
-		
-		sublepras[i] = ObjDict(sublepras[i].items() + _sl_info.items())
-	"""
-	
-	return sublepras
-
-
 def retrieve_sublepra_info(http_conn, sublepra_name):
-	http_conn = MyHTTPConnection("%s.leprosorium.ru" % sublepra_name)
+	if (len(sublepra_name) > 0):
+		_sl_hostname = "%s.leprosorium.ru" % sublepra_name
+	else:
+		_sl_hostname = ""
+	# -------------------------------------------------
 	
-	info_raw_html = http_conn.request("GET", "/controls/", "")
+	info_raw_html = http_conn.request("GET", "/controls/", "", vhost = _sl_hostname)
 	if (info_raw_html is None):
 		return None
 	
-	return parse_sublepra_info(info_raw_html)
+	return parse_sublepra_info(info_raw_html, sublepra = sublepra_name)
 
 
+def retrieve_glagne_metadata(http_conn, former_presidents = False):
+	"""
+	presidents = parse_glagne_presidents(__make_http_request_to_glagne(
+					"GET",
+					"/elections/president/",
+					""
+	))
+	
+	#print(pres)
+	#print
+	for pres in presidents:
+		print("'%s'" % pres.start_date)
+		print("'%s'" % pres.end_date)
+		print(pres.user_nickname)
+		print
+	"""
+	
+	"""
+	democracy = parse_glagne_democracy(__make_http_request_to_glagne(
+					"GET",
+					"/democracy/",
+					""
+	))
+	print(democracy)
+	"""
+	
+	pass 
 
 #===============================================================================
 # CRAWLERS (ROOT DATA SOURCES)
 #===============================================================================
 
-def crawl_sublepra(http_conn, sublepra_name, post_queue, start_page = 0, max_posts_num = None):
+def crawl_sublepra_posts(http_conn, sublepra_name, post_queue, start_page = 0, max_posts_num = None):
 	sublepra_name = sublepra_name.lower()
 	
 	# -------------------------------------------------
@@ -388,7 +391,7 @@ def crawl_sublepra(http_conn, sublepra_name, post_queue, start_page = 0, max_pos
 	return last_post_pos
 
 
-def crawl_lepra_live(http_conn, post_queue):
+def monitor_lepra_live(http_conn, post_queue):
 	token = 0
 	
 	while (True):
@@ -458,35 +461,39 @@ def monitor_elections(http_conn, storage_queue):
 		)
 		# -----
 
-#------------------------------------------------------------------------------ 
-# 	TEST CODE
-#------------------------------------------------------------------------------ 
+def crawl_sublepras_list(http_conn, storage_queue, sublepra_queue):
+	"""
+		-sublepras list: sublepra_id, name, title, owner
+	"""
+	
+	_sl_pages = 1
+	_cur_sl_page = 1
+	sublepras = []
+	
+	while (_cur_sl_page <= _sl_pages):
+		_cur_sublepras, _sl_pages = parse_sublepras_list(
+								http_conn.request(
+										"GET",
+										"/underground/created/%u/" % _cur_sl_page,
+										""
+								),
+								sublepra = ""
+		)
+		_cur_sl_page += 1
+		sublepras += _cur_sublepras
+		
+		# -- en
+	
+	return sublepras
 
-"""
-presidents = parse_glagne_presidents(__make_http_request_to_glagne(
-				"GET",
-				"/elections/president/",
-				""
-))
-
-#print(pres)
-#print
-for pres in presidents:
-	print("'%s'" % pres.start_date)
-	print("'%s'" % pres.end_date)
-	print(pres.user_nickname)
-	print
-"""
-
-"""
-democracy = parse_glagne_democracy(__make_http_request_to_glagne(
-				"GET",
-				"/democracy/",
-				""
-))
-print(democracy)
-"""
-
+def monitor_metadata(http_conn, storage_queue):
+	"""
+		-sublepras metadata: create date, owner, access lists 
+		-glagne metadata: president, ministers, banned, former presidents
+			
+	"""
+	
+	
 #===============================================================================
 # PARALLEL WORKERS
 #===============================================================================
@@ -543,7 +550,7 @@ def storage_worker(storage_queue):
 			print_safe("<storage> %s('%s')" % (method_name, _user_name))
 			
 		elif (method_name == "store_greeting"):
-			print_safe(u"<storage> %s('%s')" % (method_name, args[0]))
+			print_safe(u"<storage> %s('%s', '%s')" % (method_name, args[0], args[1]))
 			
 		elif (isinstance(args[0], dict)) and (args[0].has_key("id")):
 			print_safe("<storage> %s('%u')" % (method_name, args[0]["id"]))
@@ -1008,18 +1015,19 @@ def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 	recv_thread.join()
 # --------------------------------------------------------------------------------------
 
-def __greeting_callback(storage_queue, greeting):
+def __greeting_callback(storage_queue, greeting, sublepra_name):
 	"""
 		(see parsers.py)
 	"""
 	
 	try:
 		storage_queue.put(
-				("store_greeting", (greeting,), {"observed_date" : time()}),
+				("store_greeting", (greeting, sublepra_name), {"observed_date" : time()}),
 				block = False
 		)
 	except QueueFullException:
-		print(u"\n{ERR} storage_queue is full; greeting '%s' skipped\n" % greeting)
+		print(u"\n{ERR} storage_queue is full; greeting '%s' (%s.leprosorium.ru) from skipped\n" % 
+					(greeting, sublepra_name))
 
 
 #===============================================================================
@@ -1043,16 +1051,9 @@ _processes = [
 		Process(target = comm_rating_handle_worker, args = (storage_queue, comm_rating_queue, user_queue))
 ]
 
-#_processes[-1].daemon = True
-#_processes[-1].start()
-
-#sleep(100500)
-
-#"""
 for _proc in _processes:
 	_proc.daemon = True
 	_proc.start()
-#"""
 # ---------------------
 
 glagne_http_conn = MyHTTPConnection("leprosorium.ru")
@@ -1061,7 +1062,7 @@ _crawl_threads = []
 # run crawlers according to config
 if (cfg_params["lepra_live"]):
 	_crawl_threads.append(
-			Thread(target = crawl_lepra_live, args = (glagne_http_conn, post_queue)),
+			Thread(target = monitor_lepra_live, args = (glagne_http_conn, post_queue)),
 	)
 	
 if (cfg_params["elections"]):

@@ -74,14 +74,22 @@ CREATE TABLE IF NOT EXISTS 'sublepra_data' (
 	default_access_mode INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS 'sublepra_stats' (
+	sublepra_id INTEGER REFERENCES sublepra (lepro_slid) NOT NULL,
+	observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+	
+	posts_num INTEGER,
+	comments_num INTEGER,
+	subscribers_num INTEGER
+);
+
+-- access_list_json <=> [(user_nickname, int ACCESS_MODE), ...]
+-- (see defs.py for SUBLEPRA_ACCESS_* bit flags)
 CREATE TABLE IF NOT EXISTS 'sublepra_acl' (
 	sublepra_id INTEGER REFERENCES sublepra (lepro_slid) NOT NULL,
 	observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 	
-	moderators_nicknames_json TEXT,
-	banned_nicknames_json TEXT,
-	readers_nicknames_json TEXT,
-	writers_nicknames_json TEXT
+	access_list_json TEXT
 );
 
 --
@@ -206,13 +214,23 @@ CREATE TABLE IF NOT EXISTS 'glagne_vote_data' (
 --
 CREATE TABLE IF NOT EXISTS 'greeting' (
 	id INTEGER PRIMARY KEY,
-	content TEXT UNIQUE,
+	content TEXT UNIQUE
+);
+CREATE INDEX IF NOT EXISTS _idx_greeting_id ON greeting (id);
+CREATE INDEX IF NOT EXISTS _idx_greeting_content ON greeting (content);
+
+CREATE TABLE IF NOT EXISTS 'greeting_sublepra' (
+	id INTEGER PRIMARY KEY,
+	greeting_id INTEGER REFERENCES greeting (id) NOT NULL,
+	sublepra_name TEXT,
+	
 	first_observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 	last_observed_date INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 	times_occured INTEGER NOT NULL DEFAULT 1
 );
-CREATE INDEX IF NOT EXISTS _idx_greeting_id ON greeting (id);
-CREATE INDEX IF NOT EXISTS _idx_greeting_content ON greeting (content);
+CREATE INDEX IF NOT EXISTS _idx_greeting_sublepra_id ON greeting_sublepra (id);
+CREATE INDEX IF NOT EXISTS _idx_greeting_sublepra_greetingid ON greeting_sublepra (greeting_id);
+CREATE INDEX IF NOT EXISTS _idx_greeting_sublepra_slname ON greeting_sublepra (sublepra_name);
 
 --
 -- Posts tagging
