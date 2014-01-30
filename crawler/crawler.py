@@ -396,9 +396,16 @@ def crawl_sublepra_posts(http_conn, sublepra_name, post_queue, start_page = 0, m
 	last_post_pos = start_page * 42
 	
 	while (True):
-		_page_posts = parse_sublepra_json(
-					http_conn.request("POST", "/idxctl/", "from=%u" % last_post_pos, vhost = _sl_hostname)
-		)
+		try:
+			_page_posts = parse_sublepra_json(
+						http_conn.request("POST", "/idxctl/",
+										"from=%u" % last_post_pos, vhost = _sl_hostname)
+			)
+		except LocationRedirect as _e:
+			print("\n{ERR} Sublepra indexing failed: Redirect ('%s', '%u', '%s')\n" %
+					(sublepra_name, _e.http_status, _e.http_location) 
+			)
+			break
 		
 		if (len(_page_posts) == 0): break
 		
@@ -495,6 +502,9 @@ def crawl_over_all_sublepras(http_conn, post_queue):
 	sublepras_list = sorted(sublepras_list, key = lambda _sl: _sl.comments_num, reverse = True)
 	
 	for _sl_data in sublepras_list:
+		if (_sl_data.id is None):
+			continue
+		
 		crawl_sublepra_posts(http_conn, _sl_data["name"], post_queue)
 		
 	return True
@@ -644,6 +654,7 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 			_prev_rand_user = _rand_user
 		else:
 			_rand_user = None
+			_t0 = time()
 			
 			while (_total_users_freq[0] > 1):
 				rand_val = random.randint(0, _total_users_freq[0])
@@ -660,7 +671,9 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 					break
 				
 				sleep(0.1)
-		
+			
+			print("{INFO} User random select took '%f' seconds" % (time() - _t0))
+			
 		_lock.release()
 			
 		if (_rand_user is None):
@@ -833,6 +846,7 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 			_prev_rand_post = _rand_post
 		else:
 			_rand_post = None
+			_t0 = time()
 			
 			while (_total_posts_freq[0] > 1):
 				rand_val = random.randint(0, _total_posts_freq[0])
@@ -849,13 +863,16 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 					break
 				
 				sleep(0.1)
-		
+			
+			print("{INFO} Post random select took '%f' seconds" % (time() - _t0))
 		_lock.release()
 			
 		if (_rand_post is None):
 			sleep(1)
 			continue
 		# --------------------
+		
+		print(_rand_post)
 		
 		# --------
 		_out_cont = False
