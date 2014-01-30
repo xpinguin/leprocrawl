@@ -1,5 +1,5 @@
 # local stuff
-crawler/cookie.txt
+crawler/cookie*.txt
 db/*.db*
 screenlog.*
 *.json
