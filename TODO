@@ -17,3 +17,10 @@ CRAWLER
 
 5. == migrate to PostgreSQL: SQLite brings too much troubles with concurrent access ==
 
+6. == use scipy sparse arrays to store known posts and users indicies<->freq ==
+	WHY: memory requirements reduction
+
+7. == introduce frequency-augmented random walk for comments == ???
+
+8. == parser, storage, crawler for dirty.ru ==
+8.1. think about generalization of current implementation!

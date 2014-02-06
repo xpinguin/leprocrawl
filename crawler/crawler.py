@@ -32,6 +32,7 @@ if (cfg_params["enable_rconsole"]):
 #------------------------------------------------------------------------------
 socket.setdefaulttimeout(SOCKET_GLOBAL_TIMEOUT)
 
+
 #------------------------------------------------------------------------------ 
 def __amortize_occur_freq_inc(increment, prev_freq):
 	"""
@@ -462,18 +463,21 @@ def monitor_lepra_live(http_conn, post_queue):
 	token = 0
 	
 	while (True):
-		new_messages, token = parse_live_messages_list(
-										http_conn.request(
-															"POST",
-															"/livectl/",
-															"token=%u" % token
-										),
-										True
-		)
+		_live_raw_data = http_conn.request("POST", "/livectl/", "token=%u" % token)
+		
+		try:
+			new_messages, token = parse_live_messages_list(_live_raw_data, True)
+		except (KeyError, ValueError, TypeError) as _e:
+			print("{ERR-WOW} lepralive parsing error:\n'%s'\n--\n\t%s\n" % (_live_raw_data, repr(_e)))
+			sleep(1)
+			continue
 		
 		for _msg in sorted(new_messages, key = lambda _m: _m.create_date, reverse = True):
 			_post_id = _msg.post_id
 			if (_post_id is None): _post_id = _msg.id
+			if (_post_id is None):
+				print("{ERR-WOW} Live entry without any post id! Here it is:\n%s\n" % repr(_msg))
+				continue
 			
 			post_queue.put((_post_id, True, _msg.sublepra.lower()), block = True, timeout = None)
 			
@@ -696,6 +700,7 @@ def user_handle_worker(storage_queue, user_queue, userfav_queue):
 	def _receive_users():
 		while (True):
 			user_nickname = purify_nickname(user_queue.get(block = True, timeout = None))
+			if (user_nickname is None): continue
 			
 			_lock.acquire()
 			
@@ -882,6 +887,7 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 	def _receive_posts():
 		while (True):
 			post_id, urgent, sublepra_name = post_queue.get(block = True, timeout = None)
+			if (post_id is None): continue
 			
 			_lock.acquire()
 			
@@ -997,15 +1003,21 @@ def post_handle_worker(storage_queue, post_queue, comm_rating_queue, user_queue)
 		)
 		# ---
 		
-		user_queue.put(post_data.author_nickname, block = True, timeout = None)
+		if (not post_data.author_nickname is None):
+			user_queue.put(post_data.author_nickname, block = True, timeout = None)
 		
 		for _comment in post_data.comments:
-			user_queue.put(_comment.author_nickname, block = True, timeout = None)
 			comm_rating_queue.put([_comment.id, post_data.id], block = True, timeout = None)
 			
+			if (not _comment.author_nickname is None):
+				user_queue.put(_comment.author_nickname, block = True, timeout = None)
+		
 		if (isinstance(post_data.rating, dict)):
 			for _rate in post_data.rating.itervalues():
 				try:
+					if ((_rate[1] is None) or (len(_rate[1]) == 0)):
+						continue
+					
 					user_queue.put(_rate[1], block = True, timeout = None)
 				except IndexError:
 					pass
@@ -1056,6 +1068,7 @@ def comm_rating_handle_worker(storage_queue, comm_rating_queue, user_queue):
 	def _receive_comments():
 		while (True):
 			comment_id, post_id = comm_rating_queue.get(block = True, timeout = None)
+			if (comment_id is None) or (post_id is None): continue
 			
 			co_lock.acquire()
 			comments_observed.add((comment_id, post_id))
@@ -1136,7 +1149,6 @@ def __greeting_callback(storage_queue, greeting, sublepra_name):
 #===============================================================================
 # MAIN LOGIC
 #===============================================================================
-
 storage_queue = Queue()
 user_queue = Queue()
 userfav_queue = Queue()

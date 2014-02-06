@@ -24,6 +24,6 @@ cfg_params = {
 			"lepra_live" : True,
 			"glagne_metadata" : False,
 			
-			"all_glagne_posts" : False,
+			"all_glagne_posts" : True,
 			"all_sublepras_posts" : False
 }

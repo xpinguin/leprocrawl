@@ -114,7 +114,10 @@ def __reduce_contents(tag):
 
 # ---
 def __purify_nickname(nickname):
-	return nickname.strip("#")
+	try:
+		return nickname.strip("#")
+	except AttributeError:
+		return None
 
 purify_nickname = __purify_nickname
 # ---
@@ -192,11 +195,25 @@ def parse_live_messages_list(livectl_json, return_token):
 								second = 0
 		)
 		
-		msg["author_uid"] = int(_live_el["userid"])
-		msg["author_nickname"] = __purify_nickname(_live_el["login"].encode("utf-8"))
-		msg["author_gender"] = int(_live_el["gender"])
+		try:
+			msg["author_uid"] = int(_live_el["userid"])
+		except (KeyError, ValueError):
+			msg["author_uid"] = None
 		
-		msg["id"] = int(_live_el["id"])
+		try:
+			msg["author_nickname"] = __purify_nickname(_live_el["login"].encode("utf-8"))
+		except KeyError:
+			msg["author_nickname"] = None
+			
+		try:
+			msg["author_gender"] = int(_live_el["gender"])
+		except (KeyError, ValueError):
+			msg["author_gender"] = None
+		
+		try:
+			msg["id"] = int(_live_el["id"])
+		except ValueError:
+			msg["id"] = None
 		
 		if (_live_el["type"] == ""):
 			msg["post_id"] = int(_live_el["postid"])
@@ -204,7 +221,10 @@ def parse_live_messages_list(livectl_json, return_token):
 			msg["post_id"] = None
 		
 		# ---
-		msg["body"] = _live_el["body"].encode("utf-8")
+		try:
+			msg["body"] = _live_el["body"].encode("utf-8")
+		except KeyError:
+			msg["body"] = None
 		# ---
 		
 		res_msgs.append(msg)
@@ -337,14 +357,20 @@ def parse_post_and_comments(raw_html, **kwargs):
 	_post_metadata_tag = _post_tag.find("div", class_="dd").find("div", class_="p")
 	if (_post_metadata_tag is None): 
 		_post_metadata_tag = _post_tag #.find("div", class_="dt")
-		
-	post_data["author_nickname"] = __purify_nickname(
-		_post_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
-	)
-				
-	post_data["author_uid"] = int(_user_id_re.match(
+	
+	try:	
+		post_data["author_nickname"] = __purify_nickname(
+			_post_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
+		)
+	except AttributeError:
+		post_data["author_nickname"] = None
+	
+	try:			
+		post_data["author_uid"] = int(_user_id_re.match(
 						_post_metadata_tag.find("a", class_="u", onclick=_user_id_re).attrs["onclick"]
 					).group(1))
+	except AttributeError:
+		post_data["author_uid"] = None
 	
 	post_data["create_date"] = __parse_comment_date("".join(_post_metadata_tag.stripped_strings))
 	
@@ -377,13 +403,18 @@ def parse_post_and_comments(raw_html, **kwargs):
 		_comm = ObjDict()
 		_comm["id"] = int(_comment_tag.attrs["id"])
 		
+		# ---
+		_comm["author_uid"] = None
+		_comm["indent"] = None
+		
 		for _class_name in _comment_tag.attrs["class"]:
-			if (_class_name[0] == u"u"):
+			if (len(_class_name) > 0) and (_class_name[0] == u"u"):
 				_comm["author_uid"] = int(_class_name[1:])
 			else:
 				_indent = _class_name.split(u"indent_")
 				if (len(_indent) > 1):
 					_comm["indent"] = int(_indent[1])
+		# ---
 		
 		_comm["content"] = __reduce_contents(_comment_tag.find("div", class_="dt"))
 		
@@ -391,9 +422,13 @@ def parse_post_and_comments(raw_html, **kwargs):
 		if (_comment_metadata_tag is None): 
 			_comment_metadata_tag = _comment_tag #.find("div", class_="dt")
 		
-		_comm["author_nickname"] = __purify_nickname(
-					_comment_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
-		)
+		try:
+			_comm["author_nickname"] = __purify_nickname(
+						_comment_metadata_tag.find("a", href=re.compile(ur"/users/.+", re.U)).stripped_strings.next()
+			)
+		except AttributeError:
+			_comm["author_nickname"] = None
+		
 		_comm["create_date"] = __parse_comment_date("".join(_comment_metadata_tag.find("div", class_="p").stripped_strings))
 		
 		try:
@@ -528,8 +563,11 @@ def parse_sublepra_json(json_raw):
 		_post = ObjDict()
 		
 		_post["id"] = int(_sl_post["id"])
-		_post["author_uid"] = int(_sl_post["user_id"])
 		_post["was_gold"] = int(_sl_post["was_gold"])
+		try:
+			_post["author_uid"] = int(_sl_post["user_id"])
+		except ValueError:
+			_post["author_uid"] = None
 		
 		res_posts.append(_post)
 	
